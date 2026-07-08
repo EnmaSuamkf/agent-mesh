@@ -1,0 +1,76 @@
+/**
+ * Bridge to the local agent-webhook-bridge install: the hub creates hooks by
+ * writing awb's hooks.json directly — the broker re-reads that file on every
+ * request, so a hook registered here is live immediately, no restart. Same
+ * file format `awb add` writes (agent-webhook-bridge/broker/config.ts); the
+ * hub only ever adds "trigger" hooks with the fields the mesh needs.
+ *
+ * This only works while hub and broker share a machine (phase 1). Remote
+ * nodes in phase 2 will register their own hooks and use the "existing hook"
+ * path instead.
+ */
+import * as crypto from "node:crypto";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+
+interface AwbConfig {
+	host: string;
+	port: number;
+	maxBodyBytes: number;
+	publicBaseUrl: string | null;
+	hooks: Record<string, Record<string, unknown>>;
+}
+
+// Mirrors awb's own defaults so a machine where the broker has never saved
+// its config yet still gets a valid hooks.json.
+const AWB_DEFAULTS: Omit<AwbConfig, "hooks"> = {
+	host: "127.0.0.1",
+	port: 8890,
+	maxBodyBytes: 1024 * 1024,
+	publicBaseUrl: null,
+};
+
+function awbConfigFile(): string {
+	return path.join(process.env.AWB_HOME ?? path.join(os.homedir(), ".agent-webhook-bridge"), "hooks.json");
+}
+
+function loadAwbConfig(): AwbConfig {
+	let fileCfg: Partial<AwbConfig> = {};
+	try {
+		fileCfg = JSON.parse(fs.readFileSync(awbConfigFile(), "utf8")) as Partial<AwbConfig>;
+	} catch {
+		// Missing/invalid config file → fall back to defaults.
+	}
+	return { ...AWB_DEFAULTS, ...fileCfg, hooks: { ...(fileCfg.hooks ?? {}) } };
+}
+
+export class HookExistsError extends Error {}
+
+/**
+ * Registers a new trigger hook in awb and returns what the hub needs to
+ * point an agent at it. Creates the workdir if it doesn't exist yet.
+ */
+export function createAwbHook(
+	name: string,
+	workdir: string,
+	promptTemplate: string,
+): { hookUrl: string; secret: string } {
+	const cfg = loadAwbConfig();
+	if (cfg.hooks[name]) throw new HookExistsError(`awb hook '${name}' already exists`);
+
+	const secret = crypto.randomBytes(24).toString("hex");
+	fs.mkdirSync(workdir, { recursive: true });
+	cfg.hooks[name] = {
+		mode: "trigger",
+		consumers: ["spawn:claude"],
+		secret,
+		promptTemplate,
+		workdir,
+	};
+	const file = awbConfigFile();
+	fs.mkdirSync(path.dirname(file), { recursive: true });
+	fs.writeFileSync(file, `${JSON.stringify(cfg, null, 2)}\n`);
+
+	return { hookUrl: `http://${cfg.host}:${cfg.port}/hook/${encodeURIComponent(name)}`, secret };
+}

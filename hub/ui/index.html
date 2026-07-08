@@ -116,7 +116,7 @@
         text-transform: uppercase;
         color: var(--faint);
       }
-      select, textarea{
+      select, textarea, input[type="text"], input[type="password"]{
         width: 100%;
         background: var(--surface-2);
         border: 1px solid var(--border);
@@ -127,6 +127,44 @@
         padding: 0.55rem 0.7rem;
       }
       textarea{ min-height: 6.5rem; resize: vertical; }
+      .field-hint{ font-size: 0.78rem; color: var(--faint); margin: 0.25rem 0 0; }
+      .two-col{ display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; }
+      @media (max-width: 640px){ .two-col{ grid-template-columns: 1fr; } }
+
+      details.publish{
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--surface);
+      }
+      details.publish > summary{
+        cursor: pointer;
+        padding: 0.8rem 1rem;
+        font-family: var(--mono);
+        font-size: 0.85rem;
+        color: var(--muted);
+        list-style: none;
+      }
+      details.publish > summary::before{ content: "▸ "; color: var(--accent); }
+      details.publish[open] > summary::before{ content: "▾ "; }
+      details.publish > form{ padding: 0.2rem 1rem 1rem; }
+      .mode-row{
+        display: flex;
+        gap: 1.4rem;
+        font-size: 0.88rem;
+        color: var(--muted);
+      }
+      .mode-row label{
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        text-transform: none;
+        letter-spacing: normal;
+        font-family: var(--sans);
+        font-size: 0.88rem;
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .mode-row input{ accent-color: var(--accent); }
       .submit-row{ display: flex; align-items: center; gap: 1rem; }
       button{
         background: var(--accent);
@@ -241,6 +279,73 @@
             <p class="form-msg" id="form-msg"></p>
           </div>
         </form>
+      </section>
+
+      <section aria-labelledby="publish-h">
+        <h2 id="publish-h">Publicar agente</h2>
+        <details class="publish">
+          <summary>Publicar un agente nuevo en la mesh (operadores — requiere admin token)</summary>
+          <form id="publish-form">
+            <div>
+              <label for="pub-token">Admin token</label>
+              <input type="password" id="pub-token" required autocomplete="off"
+                placeholder="El token que imprime el hub al arrancar (config.json)" />
+            </div>
+            <div class="two-col">
+              <div>
+                <label for="pub-name">Nombre</label>
+                <input type="text" id="pub-name" required pattern="[A-Za-z0-9._-]+"
+                  placeholder="ej: revisor-de-codigo" />
+              </div>
+              <div>
+                <label for="pub-owner">Owner</label>
+                <input type="text" id="pub-owner" placeholder="quién lo opera" />
+              </div>
+            </div>
+            <div>
+              <label for="pub-description">Descripción</label>
+              <input type="text" id="pub-description"
+                placeholder="Qué hace — es lo que ven los demás para decidir usarlo" />
+            </div>
+            <div>
+              <label for="pub-tags">Tags</label>
+              <input type="text" id="pub-tags" placeholder="separados por coma: codigo, revision" />
+            </div>
+            <div class="mode-row" role="radiogroup" aria-label="Origen del hook">
+              <label><input type="radio" name="pub-mode" value="new" checked />
+                Crear el hook en awb automáticamente</label>
+              <label><input type="radio" name="pub-mode" value="existing" />
+                Ya tengo un hook de awb</label>
+            </div>
+            <div id="pub-new-fields">
+              <div>
+                <label for="pub-workdir">Workdir (sandbox)</label>
+                <input type="text" id="pub-workdir" placeholder="~/agentmesh-sandbox (default)" />
+              </div>
+              <div>
+                <label for="pub-template">Prompt template</label>
+                <textarea id="pub-template"
+                  placeholder="La personalidad del agente. {{payload}} se reemplaza por la tarea. Vacío = template genérico de AgentMesh."></textarea>
+                <p class="field-hint">Tiene que incluir {{payload}} — ahí aterriza la tarea que envía el usuario.</p>
+              </div>
+            </div>
+            <div id="pub-existing-fields" hidden>
+              <div>
+                <label for="pub-hook-url">Hook URL</label>
+                <input type="text" id="pub-hook-url" placeholder="http://127.0.0.1:8890/hook/mi-hook" />
+              </div>
+              <div>
+                <label for="pub-secret">X-Webhook-Secret</label>
+                <input type="password" id="pub-secret" autocomplete="off"
+                  placeholder="el secret que devolvió awb add" />
+              </div>
+            </div>
+            <div class="submit-row">
+              <button type="submit" id="pub-btn">Publicar</button>
+              <p class="form-msg" id="pub-msg"></p>
+            </div>
+          </form>
+        </details>
       </section>
 
       <section aria-labelledby="jobs-h">
@@ -381,6 +486,73 @@
         } catch (err) {
           msg.classList.add("error");
           msg.textContent = `No se pudo enviar: ${err.message}`;
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      // --- Publish form ---
+
+      // The admin token is remembered per browser so operators type it once.
+      $("pub-token").value = localStorage.getItem("meshAdminToken") || "";
+
+      // Deep link: /#publicar opens the operator form directly.
+      if (location.hash === "#publicar") document.querySelector("details.publish").open = true;
+
+      for (const radio of document.querySelectorAll('input[name="pub-mode"]')) {
+        radio.addEventListener("change", () => {
+          const existing = radio.value === "existing" && radio.checked;
+          $("pub-new-fields").hidden = existing;
+          $("pub-existing-fields").hidden = !existing;
+        });
+      }
+
+      $("publish-form").addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        const btn = $("pub-btn");
+        const msg = $("pub-msg");
+        const token = $("pub-token").value.trim();
+        const mode = document.querySelector('input[name="pub-mode"]:checked').value;
+        const payload = {
+          name: $("pub-name").value.trim(),
+          description: $("pub-description").value.trim(),
+          owner: $("pub-owner").value.trim(),
+          tags: $("pub-tags").value.split(",").map((t) => t.trim()).filter(Boolean),
+        };
+        let path;
+        if (mode === "new") {
+          path = "/api/publish";
+          payload.workdir = $("pub-workdir").value.trim();
+          payload.promptTemplate = $("pub-template").value;
+        } else {
+          path = "/api/agents";
+          payload.hookUrl = $("pub-hook-url").value.trim();
+          payload.secret = $("pub-secret").value;
+          if (!payload.hookUrl || !payload.secret) {
+            msg.classList.add("error");
+            msg.textContent = "Hook URL y secret son obligatorios en este modo.";
+            return;
+          }
+        }
+        btn.disabled = true;
+        msg.classList.remove("error");
+        msg.textContent = "Publicando…";
+        try {
+          const { agent } = await api(path, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+            body: JSON.stringify(payload),
+          });
+          localStorage.setItem("meshAdminToken", token);
+          msg.textContent = `Agente '${agent.name}' publicado — ya aparece arriba.`;
+          $("publish-form").reset();
+          $("pub-token").value = token;
+          await refresh();
+        } catch (err) {
+          msg.classList.add("error");
+          msg.textContent = err.message === "unauthorized"
+            ? "Admin token inválido."
+            : `No se pudo publicar: ${err.message}`;
         } finally {
           btn.disabled = false;
         }

@@ -271,6 +271,27 @@ Workdir:    /home/you/agentmesh-sandbox</code></pre>
             copywriter…), all pointing at the same sandbox workdir.
           </p>
         </div>
+
+        <h3>Publishing from the UI (no terminal)</h3>
+        <p>
+          Both steps can also be done from the web UI: open
+          <a href="http://127.0.0.1:8892/#publicar">http://127.0.0.1:8892/#publicar</a>, paste the
+          admin token (printed at hub startup, also in <code>~/.agentmesh-hub/config.json</code>)
+          and fill the form. Two modes:
+        </p>
+        <ul>
+          <li><strong>Create the hook automatically</strong> — the hub writes the hook into awb's <code>hooks.json</code> (the broker re-reads it per request, so it's live immediately) and registers the agent, in one step (<code>POST /api/publish</code>). Works while hub and broker share the machine.</li>
+          <li><strong>I already have an awb hook</strong> — paste its URL and secret; only the registry entry is created (<code>POST /api/agents</code>). This is the path remote operators will use in phase 2.</li>
+        </ul>
+        <div class="callout warn">
+          <span class="tag">security</span>
+          <p>
+            Publishing is the privileged operation of the mesh: whoever holds the admin token
+            decides which workdir and prompt template a new agent runs with. The browser remembers
+            the token in <code>localStorage</code> after the first use; job submission stays
+            token-free.
+          </p>
+        </div>
       </section>
 
       <section id="using-an-agent">
@@ -378,6 +399,7 @@ curl -s http://127.0.0.1:8892/health</code></pre>
             <tbody>
               <tr><td><code>GET /api/agents</code></td><td>Public agent list — name, description, owner, tags, enabled. No secrets, no hook URLs.</td></tr>
               <tr><td><code>POST /api/agents</code></td><td>Register/update an agent (<code>Authorization: Bearer &lt;admin token&gt;</code>). Body: <code>{name, hookUrl, secret, description?, owner?, tags?, enabled?}</code>.</td></tr>
+              <tr><td><code>POST /api/publish</code></td><td>Create the awb hook <strong>and</strong> register the agent in one step (admin token). Body: <code>{name, description?, owner?, tags?, workdir?, promptTemplate?}</code>. Requires hub and awb on the same machine.</td></tr>
               <tr><td><code>DELETE /api/agents/:name</code></td><td>Remove an agent (admin token).</td></tr>
               <tr><td><code>GET /api/jobs</code> · <code>GET /api/jobs/:id</code></td><td>Recent jobs / one job's status + result.</td></tr>
               <tr><td><code>POST /api/jobs</code></td><td>Submit <code>{"agent":"…","input":"…"}</code>. Answers <code>202</code> with the pending job.</td></tr>

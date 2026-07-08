@@ -5,6 +5,8 @@
  *   GET    /health                 → liveness
  *   GET    /api/agents             → public agent list (no secrets, no hook URLs)
  *   POST   /api/agents             → register/update an agent (admin token)
+ *   POST   /api/publish            → create the awb hook AND register the agent
+ *                                     in one step (admin token; local awb only)
  *   DELETE /api/agents/:name       → remove an agent (admin token)
  *   GET    /api/jobs               → recent jobs
  *   POST   /api/jobs               → submit { agent, input }, answers with the job
@@ -18,7 +20,9 @@
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as http from "node:http";
+import * as os from "node:os";
 import * as path from "node:path";
+import { createAwbHook, HookExistsError } from "./awb.ts";
 import type { HubConfig } from "./config.ts";
 import type { Agent, Job } from "./db.ts";
 import {
@@ -176,6 +180,63 @@ export function createServer(cfg: HubConfig, log: Logger): http.Server {
 				});
 				return;
 			}
+		}
+
+		if (parts[1] === "publish" && !parts[2] && req.method === "POST") {
+			if (!isAdmin(cfg, req.headers)) {
+				sendJson(res, 401, { error: "unauthorized" });
+				return;
+			}
+			readJsonBody(req, res, cfg.maxInputBytes, (body) => {
+				const name = typeof body.name === "string" ? body.name : "";
+				if (!/^[A-Za-z0-9._-]+$/.test(name)) {
+					sendJson(res, 400, { error: "invalid name (allowed: A-Z a-z 0-9 . _ -)" });
+					return;
+				}
+				if (getAgent(name)) {
+					sendJson(res, 409, { error: "agent_exists", name });
+					return;
+				}
+				const workdir =
+					typeof body.workdir === "string" && body.workdir.trim() !== ""
+						? body.workdir.replace(/^~(?=\/|$)/, os.homedir())
+						: path.join(os.homedir(), "agentmesh-sandbox");
+				const promptTemplate =
+					typeof body.promptTemplate === "string" && body.promptTemplate.trim() !== ""
+						? body.promptTemplate
+						: "Sos un agente de AgentMesh. Tarea recibida:\n\n{{payload}}\n\nRealizá la tarea y respondé con el resultado final.";
+				// Without {{payload}} the submitted task would never reach the prompt.
+				if (!promptTemplate.includes("{{payload}}")) {
+					sendJson(res, 400, { error: "promptTemplate must contain {{payload}}" });
+					return;
+				}
+
+				let hook: { hookUrl: string; secret: string };
+				try {
+					hook = createAwbHook(name, workdir, promptTemplate);
+				} catch (err) {
+					if (err instanceof HookExistsError) {
+						sendJson(res, 409, { error: "hook_exists", name });
+						return;
+					}
+					log(`publish '${name}': could not create awb hook: ${String(err)}`, "error");
+					sendJson(res, 500, { error: "could not create the awb hook — is agent-webhook-bridge set up?" });
+					return;
+				}
+
+				const agent = saveAgent({
+					name,
+					hookUrl: hook.hookUrl,
+					secret: hook.secret,
+					description: typeof body.description === "string" ? body.description : "",
+					owner: typeof body.owner === "string" ? body.owner : "",
+					tags: Array.isArray(body.tags) ? body.tags.map(String) : [],
+					enabled: true,
+				});
+				log(`agent '${name}' published (hook + registry)`);
+				sendJson(res, 200, { agent: publicAgent(agent), workdir });
+			});
+			return;
 		}
 
 		if (parts[1] === "agents" && parts[2] && req.method === "DELETE") {

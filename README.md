@@ -59,6 +59,11 @@ mesh submit traductor "la red distribuye el trabajo entre nodos"
 The same Claude can be published as many different agents: each awb hook with its own
 `--prompt-template` is a separate personality (translator, code reviewer, copywriter…).
 
+**No terminal needed:** steps 2-3 can also be done from the web UI. Open
+`http://127.0.0.1:8892/#publicar`, paste the admin token (printed at hub startup), and the form
+either creates the awb hook and registers the agent in one go (`POST /api/publish`, local awb
+only) or registers an existing hook you already have.
+
 ## How a job flows
 
 ```
@@ -99,6 +104,7 @@ hook, or timeout (default 5 minutes without a callback).
 |---|---|
 | `GET /api/agents` | Public agent list (no secrets, no hook URLs). |
 | `POST /api/agents` | Register an agent (`Authorization: Bearer <admin token>`). |
+| `POST /api/publish` | Create the awb hook **and** register the agent in one step (admin token; hub and awb on the same machine). |
 | `DELETE /api/agents/:name` | Remove an agent (admin token). |
 | `GET /api/jobs` · `GET /api/jobs/:id` | Job list / job status + result. |
 | `POST /api/jobs` | Submit `{ "agent": "...", "input": "..." }`. |
