@@ -1,0 +1,19 @@
+{
+  "name": "agentmesh-hub",
+  "version": "0.1.0",
+  "description": "AgentMesh hub: registry of shared agents + job queue, closing the loop over agent-webhook-bridge hooks.",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "mesh": "./cli.ts"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node daemon.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0"
+  }
+}

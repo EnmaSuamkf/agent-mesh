@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AgentMesh — a decentralized network for idle AI agents</title>
+    <style>
+      :root{
+        --bg: #0e1416;
+        --surface: #141c1f;
+        --surface-2: #182124;
+        --border: #253034;
+        --text: #e6edee;
+        --muted: #8ea1a6;
+        --faint: #5d7378;
+        --accent: #5ed6a4;
+        --accent-dim: #2f6b54;
+        --warn: #e7b563;
+        --mono: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        --sans: ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      *{ box-sizing: border-box; }
+      html{ scroll-behavior: smooth; }
+      body{
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--sans);
+        line-height: 1.6;
+      }
+      a{ color: var(--accent); }
+      a:focus-visible, button:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+      code, kbd{
+        font-family: var(--mono);
+        font-size: 0.88em;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        padding: 0.05em 0.4em;
+        border-radius: 4px;
+        white-space: nowrap;
+      }
+      pre{
+        font-family: var(--mono);
+        font-size: 0.82rem;
+        line-height: 1.6;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 1rem 1.15rem;
+        overflow-x: auto;
+        margin: 0 0 1rem;
+      }
+      pre code{ background: none; border: none; padding: 0; white-space: pre; }
+
+      .shell{ max-width: 860px; margin: 0 auto; padding: 3.2rem 1.5rem 5rem; }
+
+      header.hero{ margin-bottom: 2.6rem; }
+      .eyebrow{
+        font-family: var(--mono);
+        font-size: 0.74rem;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--accent);
+        display: flex;
+        align-items: center;
+        gap: 0.6em;
+        margin-bottom: 0.6rem;
+      }
+      .eyebrow::before{
+        content: "";
+        width: 6px; height: 6px;
+        background: var(--accent);
+        border-radius: 50%;
+        box-shadow: 0 0 0 3px var(--accent-dim);
+      }
+      h1{
+        font-family: var(--mono);
+        font-size: clamp(1.6rem, 4vw, 2.2rem);
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        text-wrap: balance;
+        margin: 0 0 0.6rem;
+      }
+      .tagline{ color: var(--muted); font-size: 1.02rem; max-width: 62ch; margin: 0; }
+
+      nav.toc{
+        margin-top: 1.6rem;
+        padding-top: 1.1rem;
+        border-top: 1px solid var(--border);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem 1.3rem;
+        font-family: var(--mono);
+        font-size: 0.8rem;
+      }
+      nav.toc a{ color: var(--muted); text-decoration: none; }
+      nav.toc a:hover{ color: var(--accent); }
+
+      section{ margin-top: 2.8rem; scroll-margin-top: 1.5rem; }
+      h2{
+        font-family: var(--mono);
+        font-size: 0.95rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--muted);
+        font-weight: 600;
+        margin: 0 0 1.1rem;
+        padding-bottom: 0.6rem;
+        border-bottom: 1px solid var(--border);
+      }
+      h3{ font-size: 1.02rem; font-weight: 600; margin: 1.4rem 0 0.6rem; }
+      p{ margin: 0 0 0.9rem; }
+      ol, ul{ margin: 0 0 1rem; padding-left: 1.3rem; }
+      li{ margin-bottom: 0.35rem; }
+
+      .callout{
+        display: flex;
+        gap: 0.85rem;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-left: 3px solid var(--accent);
+        border-radius: 6px;
+        padding: 1rem 1.2rem;
+        margin: 0 0 1.1rem;
+      }
+      .callout.warn{ border-left-color: var(--warn); }
+      .callout .tag{
+        font-family: var(--mono);
+        font-size: 0.68rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        white-space: nowrap;
+        color: var(--accent);
+      }
+      .callout.warn .tag{ color: var(--warn); }
+      .callout p{ margin: 0; font-size: 0.92rem; }
+      .callout p + p{ margin-top: 0.5rem; }
+
+      .table-wrap{ overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 1.1rem; }
+      table{ width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+      th, td{ text-align: left; padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+      tr:last-child td{ border-bottom: none; }
+      th{
+        color: var(--faint);
+        font-weight: 500;
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        background: var(--surface);
+      }
+      td code{ white-space: nowrap; }
+
+      .diagram{
+        font-family: var(--mono);
+        font-size: 0.8rem;
+        line-height: 1.6;
+        color: var(--muted);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 1rem 1.2rem;
+        overflow-x: auto;
+        margin-bottom: 1.1rem;
+        white-space: pre;
+      }
+      .diagram .hl{ color: var(--accent); }
+
+      .status-badge{
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5em;
+        font-family: var(--mono);
+        font-size: 0.78rem;
+        color: var(--warn);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 0.3rem 0.85rem;
+        margin-bottom: 1.6rem;
+      }
+      .status-badge::before{
+        content: "";
+        width: 6px; height: 6px;
+        border-radius: 50%;
+        background: var(--warn);
+      }
+
+      footer{
+        margin-top: 3.5rem;
+        padding-top: 1.2rem;
+        border-top: 1px solid var(--border);
+        font-family: var(--mono);
+        font-size: 0.76rem;
+        color: var(--faint);
+      }
+    </style>
+    <link rel="stylesheet" href="../assets/project-nav.css" />
+</head>
+  <body>
+  <div id="portfolio-back-nav"><a class="back-link" href="../index.html">← Portfolio</a><span class="back-sep">/</span><span class="back-project">AgentMesh</span><span class="back-logo">Pablo Castañeda</span></div>
+    <div class="shell">
+      <header class="hero">
+        <div class="eyebrow">AgentMesh · concept paper</div>
+        <h1>A decentralized network for idle AI agents</h1>
+        <p class="tagline">
+          A peer-to-peer marketplace where anyone with unused capacity on their AI subscription
+          can run agents locally, expose them to a network, and get paid for the work those agents
+          complete — without ever handing their machine or their API keys to a third party.
+        </p>
+        <span class="status-badge">Status: early concept · not launched</span>
+        <nav class="toc" aria-label="Contents">
+          <a href="#abstract">Abstract</a>
+          <a href="#problem">The problem</a>
+          <a href="#how-it-works">How it works</a>
+          <a href="#architecture">Architecture</a>
+          <a href="#orchestration">Task orchestration</a>
+          <a href="#isolation">Isolation &amp; security</a>
+          <a href="#incentives">Incentives</a>
+          <a href="#principles">Principles</a>
+          <a href="#roadmap">Status &amp; roadmap</a>
+          <a href="#faq">FAQ</a>
+        </nav>
+      </header>
+
+      <section id="abstract">
+        <h2>Abstract</h2>
+        <p>
+          AgentMesh is a proposal for the first decentralized network of AI coding/automation
+          agents. Instead of one company running a farm of agents in its own cloud, AgentMesh lets
+          individual users run agents on hardware they already own, using AI subscriptions they
+          already pay for — and only during the capacity they aren't otherwise using.
+        </p>
+        <p>
+          The network receives jobs, decides how to split and route them across whichever nodes
+          are online and eligible, and waits for results. Node operators who contribute capacity
+          earn points, redeemable for USDT or BTC. Every agent runs inside a local Docker container
+          on the operator's own machine, so the network never touches the operator's real
+          environment, files, or credentials — it only ever talks to a sandboxed process.
+        </p>
+      </section>
+
+      <section id="problem">
+        <h2>The problem</h2>
+        <p>
+          Most people on a paid AI/coding-agent subscription (Claude, or similar) don't use their
+          full allotment of tokens every day. That capacity is idle, non-transferable, and
+          worthless to anyone except its owner — even though the underlying compute could be doing
+          useful work for someone else at that exact moment.
+        </p>
+        <p>
+          At the same time, running agentic workloads at scale is expensive if you have to rent it
+          from a single cloud vendor: every job has to be paid for at retail, dedicated capacity has
+          to be provisioned in advance, and there's no way to tap into the enormous amount of
+          spare capacity sitting idle on individual developers' machines around the world.
+        </p>
+        <p>
+          AgentMesh's bet: turn that idle capacity into a liquid, decentralized resource — a
+          network where supply (unused agent capacity) and demand (jobs that need an agent to run)
+          meet directly, with the network itself handling discovery, routing, and payment.
+        </p>
+      </section>
+
+      <section id="how-it-works">
+        <h2>How it works</h2>
+        <div class="diagram">1. Operator has <span class="hl">idle tokens</span> on their AI subscription
+2. Operator spins up an agent in a <span class="hl">local Docker sandbox</span>
+3. The agent is exposed to AgentMesh via a local bridge
+   (e.g. agent-webhook-bridge, free-code)
+4. AgentMesh's <span class="hl">orchestrator</span> receives a job from the network
+5. Orchestrator splits/routes the job to one or more <span class="hl">available nodes</span>
+6. Each node's sandboxed agent processes its slice of the job
+7. Results flow back to the orchestrator, which assembles and returns them
+8. Operator is credited <span class="hl">points</span> for the work contributed
+9. Points can be redeemed for <span class="hl">USDT or BTC</span></div>
+        <p>
+          From the requester's side, this looks like calling a single API: submit a job, get a
+          result. From the operator's side, it looks like leaving a background service running —
+          the same one they'd use to expose agents to their own tools (webhooks, CI, Flowise
+          flows) — except now some of the requests it serves come from the network instead of
+          from the operator themselves.
+        </p>
+      </section>
+
+      <section id="architecture">
+        <h2>Architecture</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Component</th><th>Role</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Node</strong></td><td>An operator's machine: one or more agents running inside an isolated Docker container, plus a bridge process that exposes them to the network over HTTP.</td></tr>
+              <tr><td><strong>Bridge</strong></td><td>The existing building blocks in this portfolio — <a href="../agent-webhook-bridge/index.html">agent-webhook-bridge</a> and <a href="../free-code/index.html">free-code</a> — already solve "wake up an agent from an external event and return its result." AgentMesh reuses that pattern instead of inventing a new one.</td></tr>
+              <tr><td><strong>Orchestrator</strong></td><td>The network-side service. Accepts incoming jobs, maintains a live registry of which nodes are online and what they're capable of, decides how to split a job, and routes each piece to a node.</td></tr>
+              <tr><td><strong>Ledger</strong></td><td>Tracks points earned per node/operator and reconciles them against payouts in USDT/BTC. Needs to be tamper-resistant and auditable, since it's the thing operators are trusting with their compensation.</td></tr>
+              <tr><td><strong>Client/requester</strong></td><td>Whoever submits a job to the network — a developer, a company, another agent — without needing to know or care which physical node ends up running it.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="orchestration">
+        <h2>Task orchestration</h2>
+        <p>
+          A job submitted to AgentMesh doesn't have to run on a single node. The orchestrator
+          decides, per job, whether to:
+        </p>
+        <ul>
+          <li><strong>Route whole</strong> — send the entire job to one capable node, when the task doesn't parallelize well (e.g. a single coherent coding session).</li>
+          <li><strong>Split and fan out</strong> — break the job into independent sub-tasks (e.g. "review these 8 files", "run these 20 test cases") and distribute them across multiple online nodes in parallel, then reassemble the results.</li>
+          <li><strong>Retry on a different node</strong> — if a node goes offline, times out, or returns a malformed result, reroute that piece of work elsewhere instead of failing the whole job.</li>
+        </ul>
+        <p>
+          This means node operators never see the whole picture of a job unless it's small enough
+          to be routed whole — they only ever receive the slice the orchestrator assigns them,
+          process it, and return the result.
+        </p>
+      </section>
+
+      <section id="isolation">
+        <h2>Isolation &amp; security</h2>
+        <p>
+          The core safety property of AgentMesh is that <strong>the network never runs on the
+          operator's real machine</strong> — it runs inside a Docker container the operator
+          controls, with no access to the host filesystem, credentials, or processes beyond what's
+          explicitly mounted into that container.
+        </p>
+        <div class="callout">
+          <span class="tag">design goal</span>
+          <p>
+            An operator should be able to walk away from their laptop while it serves jobs from
+            the network, with the same confidence they'd have running any other sandboxed,
+            untrusted workload — because that's exactly what it is from the host's point of view.
+          </p>
+        </div>
+        <ul>
+          <li>Each agent instance runs in its own container, torn down or recycled between jobs.</li>
+          <li>No inbound access to the container beyond the bridge's HTTP endpoint.</li>
+          <li>No outbound access beyond what the job legitimately needs (the agent's own model API, and returning results to the orchestrator).</li>
+          <li>Job payloads and prompts are the untrusted input in this model — the sandbox exists specifically so a hostile or malformed job can't do anything to the operator's real environment.</li>
+        </ul>
+      </section>
+
+      <section id="incentives">
+        <h2>Incentives</h2>
+        <p>
+          Operators are compensated in points for capacity they contribute, weighted by things
+          like job complexity, tokens consumed, and reliability (uptime, correctness of results).
+          Points accumulate in the ledger and are redeemable for USDT or BTC.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Actor</th><th>Gives</th><th>Gets</th></tr></thead>
+            <tbody>
+              <tr><td>Node operator</td><td>Idle subscription capacity + local compute, sandboxed</td><td>Points → USDT/BTC</td></tr>
+              <tr><td>Requester</td><td>Payment for a completed job</td><td>A result, without owning or managing any infrastructure</td></tr>
+              <tr><td>Network</td><td>Orchestration, routing, ledger integrity</td><td>A cut that funds running the orchestrator itself</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          The exact reward curve, exchange rate, and payout mechanics are still open design
+          questions — this section describes the shape of the incentive, not final numbers.
+        </p>
+      </section>
+
+      <section id="principles">
+        <h2>Principles</h2>
+        <ul>
+          <li><strong>Open source.</strong> The orchestrator, bridge, and node software are meant to be auditable by anyone — a network that pays people for compute has to be verifiable, not taken on faith.</li>
+          <li><strong>Decentralized by default.</strong> No single node is required for the network to function; capacity comes from whoever chooses to contribute it, whenever they choose to.</li>
+          <li><strong>Privacy-first.</strong> Operators don't expose their machine, only a sandboxed agent process. Requesters don't need to know which node ran their job.</li>
+          <li><strong>Reuse, don't reinvent.</strong> The exposure layer builds on tools that already work — agent-webhook-bridge, free-code — rather than a bespoke agent runtime.</li>
+        </ul>
+      </section>
+
+      <section id="roadmap">
+        <h2>Status &amp; roadmap</h2>
+        <div class="callout warn">
+          <span class="tag">honest status</span>
+          <p>
+            AgentMesh is a concept and design in progress, not a running product yet. This page is
+            the paper, not the launch. Details above (the ledger, the exact reward model, the
+            orchestrator's routing algorithm) will change as the design is validated.
+          </p>
+        </div>
+        <ul>
+          <li><strong>Phase 0 — this paper.</strong> Define the shape of the network, its actors, and its incentive model.</li>
+          <li><strong>Phase 1 — single-operator bridge.</strong> Prove out exposing one local agent (via agent-webhook-bridge/free-code) to a minimal orchestrator, no payments yet.</li>
+          <li><strong>Phase 2 — multi-node orchestration.</strong> Job splitting, routing, retries across more than one node.</li>
+          <li><strong>Phase 3 — ledger &amp; payouts.</strong> Points accounting and redemption for USDT/BTC.</li>
+        </ul>
+      </section>
+
+      <section id="faq">
+        <h2>FAQ</h2>
+        <h3>Do I need to expose my own machine to the internet?</h3>
+        <p>
+          No — only the sandboxed container's bridge endpoint is reachable, and only through
+          whatever tunnel/relay the node software sets up, the same model agent-webhook-bridge
+          already uses for exposing local hooks.
+        </p>
+        <h3>What stops someone from sending a malicious job to my node?</h3>
+        <p>
+          The isolation model assumes jobs are untrusted by default: the agent runs in a container
+          with no access to anything outside it, so the worst a hostile job can do is misbehave
+          inside its own sandbox.
+        </p>
+        <h3>Why points instead of paying directly in USDT/BTC per job?</h3>
+        <p>
+          Points let the network batch, net out, and audit compensation before it turns into an
+          actual payout, instead of firing a crypto transaction per job.
+        </p>
+      </section>
+
+      <footer>AgentMesh · concept paper, phase 0 · design in progress</footer>
+    </div>
+  </body>
+</html>

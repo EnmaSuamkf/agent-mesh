@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AgentMesh — hub</title>
+    <style>
+      /* Same palette/typography as the concept paper (../index.html) so the
+         hub reads as part of the same family. */
+      :root{
+        --bg: #0e1416;
+        --surface: #141c1f;
+        --surface-2: #182124;
+        --border: #253034;
+        --text: #e6edee;
+        --muted: #8ea1a6;
+        --faint: #5d7378;
+        --accent: #5ed6a4;
+        --accent-dim: #2f6b54;
+        --warn: #e7b563;
+        --fail: #e77a63;
+        --mono: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        --sans: ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      *{ box-sizing: border-box; }
+      body{
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--sans);
+        line-height: 1.55;
+      }
+      a{ color: var(--accent); }
+      button:focus-visible, select:focus-visible, textarea:focus-visible{
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      .shell{ max-width: 860px; margin: 0 auto; padding: 2.6rem 1.5rem 4rem; }
+
+      header.hero{ margin-bottom: 2rem; }
+      .eyebrow{
+        font-family: var(--mono);
+        font-size: 0.74rem;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--accent);
+        display: flex;
+        align-items: center;
+        gap: 0.6em;
+        margin-bottom: 0.5rem;
+      }
+      .eyebrow::before{
+        content: "";
+        width: 6px; height: 6px;
+        background: var(--accent);
+        border-radius: 50%;
+        box-shadow: 0 0 0 3px var(--accent-dim);
+      }
+      h1{
+        font-family: var(--mono);
+        font-size: clamp(1.4rem, 3.5vw, 1.9rem);
+        font-weight: 600;
+        margin: 0 0 0.4rem;
+      }
+      .tagline{ color: var(--muted); margin: 0; max-width: 62ch; }
+
+      section{ margin-top: 2.2rem; }
+      h2{
+        font-family: var(--mono);
+        font-size: 0.9rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--muted);
+        font-weight: 600;
+        margin: 0 0 1rem;
+        padding-bottom: 0.55rem;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .agents{ display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 0.8rem; }
+      .agent-card{
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 0.9rem 1rem;
+      }
+      .agent-card h3{
+        font-family: var(--mono);
+        font-size: 0.95rem;
+        font-weight: 600;
+        margin: 0 0 0.3rem;
+        color: var(--accent);
+        overflow-wrap: anywhere;
+      }
+      .agent-card p{ margin: 0 0 0.5rem; font-size: 0.88rem; color: var(--muted); }
+      .agent-meta{
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        color: var(--faint);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem 0.8rem;
+      }
+      .tag{
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 0.05rem 0.55rem;
+        background: var(--surface-2);
+      }
+
+      form{ display: grid; gap: 0.7rem; }
+      label{
+        font-family: var(--mono);
+        font-size: 0.74rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--faint);
+      }
+      select, textarea{
+        width: 100%;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--text);
+        font-family: var(--sans);
+        font-size: 0.95rem;
+        padding: 0.55rem 0.7rem;
+      }
+      textarea{ min-height: 6.5rem; resize: vertical; }
+      .submit-row{ display: flex; align-items: center; gap: 1rem; }
+      button{
+        background: var(--accent);
+        border: none;
+        border-radius: 6px;
+        color: #0b1512;
+        font-family: var(--mono);
+        font-size: 0.88rem;
+        font-weight: 600;
+        padding: 0.55rem 1.3rem;
+        cursor: pointer;
+      }
+      button:disabled{ background: var(--accent-dim); cursor: wait; }
+      .form-msg{ font-size: 0.85rem; color: var(--muted); margin: 0; }
+      .form-msg.error{ color: var(--fail); }
+
+      .table-wrap{ overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+      table{ width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+      th, td{ text-align: left; padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+      tr:last-child td{ border-bottom: none; }
+      th{
+        color: var(--faint);
+        font-weight: 500;
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        background: var(--surface);
+        white-space: nowrap;
+      }
+      td.job-id{ font-family: var(--mono); font-size: 0.76rem; color: var(--faint); white-space: nowrap; }
+      td.job-agent{ font-family: var(--mono); font-size: 0.8rem; white-space: nowrap; }
+      .status{
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        border-radius: 999px;
+        padding: 0.1rem 0.6rem;
+        white-space: nowrap;
+      }
+      .status.pending, .status.running{ color: var(--warn); border: 1px solid var(--warn); }
+      .status.done{ color: var(--accent); border: 1px solid var(--accent-dim); }
+      .status.failed{ color: var(--fail); border: 1px solid var(--fail); }
+
+      details summary{
+        cursor: pointer;
+        color: var(--muted);
+        font-size: 0.82rem;
+        white-space: nowrap;
+      }
+      details pre{
+        font-family: var(--mono);
+        font-size: 0.8rem;
+        line-height: 1.55;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 0.7rem 0.9rem;
+        margin: 0.5rem 0 0.2rem;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        max-width: 56ch;
+      }
+      .empty{ color: var(--faint); font-size: 0.9rem; padding: 0.8rem; }
+
+      footer{
+        margin-top: 3rem;
+        padding-top: 1.1rem;
+        border-top: 1px solid var(--border);
+        font-family: var(--mono);
+        font-size: 0.74rem;
+        color: var(--faint);
+        display: flex;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
+      #hub-status.offline{ color: var(--fail); }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="hero">
+        <div class="eyebrow">AgentMesh · hub</div>
+        <h1>Agentes compartidos</h1>
+        <p class="tagline">
+          Elegí un agente publicado en la mesh, mandale una tarea y mirá el resultado cuando
+          termina. Cada agente corre en la máquina de su operador, detrás de su propio bridge.
+        </p>
+      </header>
+
+      <section aria-labelledby="agents-h">
+        <h2 id="agents-h">Agentes disponibles</h2>
+        <div class="agents" id="agents"><p class="empty">Cargando…</p></div>
+      </section>
+
+      <section aria-labelledby="submit-h">
+        <h2 id="submit-h">Enviar tarea</h2>
+        <form id="submit-form">
+          <div>
+            <label for="agent-select">Agente</label>
+            <select id="agent-select" required></select>
+          </div>
+          <div>
+            <label for="input-text">Tarea</label>
+            <textarea id="input-text" required
+              placeholder="Ej.: Analizá este texto y resumilo en tres puntos…"></textarea>
+          </div>
+          <div class="submit-row">
+            <button type="submit" id="submit-btn">Enviar</button>
+            <p class="form-msg" id="form-msg"></p>
+          </div>
+        </form>
+      </section>
+
+      <section aria-labelledby="jobs-h">
+        <h2 id="jobs-h">Jobs</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Job</th><th>Agente</th><th>Estado</th><th>Tarea / resultado</th></tr>
+            </thead>
+            <tbody id="jobs"><tr><td colspan="4" class="empty">Sin jobs todavía.</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <footer>
+        <span>AgentMesh hub · fase 1 · local</span>
+        <span id="hub-status">conectando…</span>
+      </footer>
+    </div>
+
+    <script>
+      // Everything an agent returns is untrusted text: it is only ever
+      // assigned via textContent — never innerHTML — so a hostile result
+      // can't inject markup into the page.
+      const $ = (id) => document.getElementById(id);
+      const POLL_MS = 2500;
+      let openJobIds = new Set();
+
+      function el(tag, className, text) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text != null) node.textContent = text;
+        return node;
+      }
+
+      async function api(path, options) {
+        const res = await fetch(path, options);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        return data;
+      }
+
+      function renderAgents(agents) {
+        const grid = $("agents");
+        const select = $("agent-select");
+        const selected = select.value;
+        grid.replaceChildren();
+        select.replaceChildren();
+
+        const usable = agents.filter((a) => a.enabled);
+        if (usable.length === 0) {
+          grid.appendChild(el("p", "empty", "No hay agentes publicados. Registrá uno con `mesh add-agent`."));
+          select.appendChild(new Option("— sin agentes —", ""));
+          return;
+        }
+        for (const agent of usable) {
+          const card = el("article", "agent-card");
+          card.appendChild(el("h3", null, agent.name));
+          card.appendChild(el("p", null, agent.description || "Sin descripción."));
+          const meta = el("div", "agent-meta");
+          if (agent.owner) meta.appendChild(el("span", null, `por ${agent.owner}`));
+          for (const tag of agent.tags) meta.appendChild(el("span", "tag", tag));
+          card.appendChild(meta);
+          grid.appendChild(card);
+          select.appendChild(new Option(agent.name, agent.name));
+        }
+        if ([...select.options].some((o) => o.value === selected)) select.value = selected;
+      }
+
+      function renderJobs(jobs) {
+        const tbody = $("jobs");
+        tbody.replaceChildren();
+        if (jobs.length === 0) {
+          const td = el("td", "empty", "Sin jobs todavía.");
+          td.colSpan = 4;
+          tbody.appendChild(el("tr")).appendChild(td);
+          return;
+        }
+        for (const job of jobs) {
+          const tr = el("tr");
+          tr.appendChild(el("td", "job-id", job.id.slice(0, 8)));
+          tr.appendChild(el("td", "job-agent", job.agent));
+          tr.appendChild(el("td")).appendChild(el("span", `status ${job.status}`, job.status));
+
+          const cell = el("td");
+          const details = document.createElement("details");
+          if (openJobIds.has(job.id)) details.open = true;
+          details.addEventListener("toggle", () => {
+            if (details.open) openJobIds.add(job.id);
+            else openJobIds.delete(job.id);
+          });
+          const preview = job.input.length > 70 ? `${job.input.slice(0, 70)}…` : job.input;
+          details.appendChild(el("summary", null, preview));
+          const body = job.status === "failed"
+            ? `⚠ ${job.error || "falló sin detalle"}`
+            : job.result ?? (job.status === "done" ? "(resultado vacío)" : "… trabajando");
+          const pre = el("pre", null, `Tarea:\n${job.input}\n\nResultado:\n${body}`);
+          details.appendChild(pre);
+          cell.appendChild(details);
+          tr.appendChild(cell);
+          tbody.appendChild(tr);
+        }
+      }
+
+      async function refresh() {
+        try {
+          const [agentsData, jobsData] = await Promise.all([api("/api/agents"), api("/api/jobs")]);
+          renderAgents(agentsData.agents);
+          renderJobs(jobsData.jobs);
+          $("hub-status").textContent = "hub online";
+          $("hub-status").classList.remove("offline");
+        } catch {
+          $("hub-status").textContent = "hub sin conexión";
+          $("hub-status").classList.add("offline");
+        }
+      }
+
+      $("submit-form").addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        const btn = $("submit-btn");
+        const msg = $("form-msg");
+        const agent = $("agent-select").value;
+        const input = $("input-text").value.trim();
+        if (!agent || !input) return;
+        btn.disabled = true;
+        msg.classList.remove("error");
+        msg.textContent = "Enviando…";
+        try {
+          const { job } = await api("/api/jobs", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ agent, input }),
+          });
+          openJobIds.add(job.id);
+          $("input-text").value = "";
+          msg.textContent = `Job ${job.id.slice(0, 8)} enviado — el resultado aparece abajo.`;
+          await refresh();
+        } catch (err) {
+          msg.classList.add("error");
+          msg.textContent = `No se pudo enviar: ${err.message}`;
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      refresh();
+      setInterval(refresh, POLL_MS);
+    </script>
+  </body>
+</html>
