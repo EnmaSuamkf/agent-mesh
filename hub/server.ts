@@ -22,7 +22,12 @@ import * as fs from "node:fs";
 import * as http from "node:http";
 import * as os from "node:os";
 import * as path from "node:path";
-import { createAwbHook, HookExistsError } from "./awb.ts";
+import {
+	createAwbHook,
+	HookExistsError,
+	PUBLISHABLE_PERMISSION_MODES,
+	type PublishablePermissionMode,
+} from "./awb.ts";
 import type { HubConfig } from "./config.ts";
 import type { Agent, Job } from "./db.ts";
 import {
@@ -210,10 +215,22 @@ export function createServer(cfg: HubConfig, log: Logger): http.Server {
 					sendJson(res, 400, { error: "promptTemplate must contain {{payload}}" });
 					return;
 				}
+				const customSecret =
+					typeof body.secret === "string" && body.secret.trim() !== "" ? body.secret.trim() : undefined;
+				let permissionMode: PublishablePermissionMode | undefined;
+				if (typeof body.permissionMode === "string" && body.permissionMode !== "") {
+					if (!PUBLISHABLE_PERMISSION_MODES.includes(body.permissionMode as PublishablePermissionMode)) {
+						sendJson(res, 400, {
+							error: `invalid permissionMode (allowed: ${PUBLISHABLE_PERMISSION_MODES.join(", ")}; bypassPermissions is CLI-only on purpose)`,
+						});
+						return;
+					}
+					permissionMode = body.permissionMode as PublishablePermissionMode;
+				}
 
 				let hook: { hookUrl: string; secret: string };
 				try {
-					hook = createAwbHook(name, workdir, promptTemplate);
+					hook = createAwbHook(name, workdir, promptTemplate, { secret: customSecret, permissionMode });
 				} catch (err) {
 					if (err instanceof HookExistsError) {
 						sendJson(res, 409, { error: "hook_exists", name });

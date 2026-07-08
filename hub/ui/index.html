@@ -170,6 +170,24 @@
       details.publish > summary::before{ content: "▸ "; color: var(--accent); }
       details.publish[open] > summary::before{ content: "▾ "; }
       details.publish > form{ padding: 0.2rem 1rem 1rem; }
+      details.advanced{
+        border: 1px dashed var(--border);
+        border-radius: 6px;
+        padding: 0 0.8rem;
+      }
+      details.advanced > summary{
+        cursor: pointer;
+        padding: 0.55rem 0;
+        font-family: var(--mono);
+        font-size: 0.76rem;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--faint);
+        list-style: none;
+      }
+      details.advanced > summary::before{ content: "▸ "; }
+      details.advanced[open] > summary::before{ content: "▾ "; }
+      details.advanced > div{ display: grid; gap: 0.7rem; padding-bottom: 0.8rem; }
       .mode-row{
         display: flex;
         gap: 1.4rem;
@@ -327,6 +345,35 @@
                   placeholder="La personalidad del agente. {{payload}} se reemplaza por la tarea. Vacío = template genérico de AgentMesh."></textarea>
                 <p class="field-hint">Tiene que incluir {{payload}} — ahí aterriza la tarea que envía el usuario.</p>
               </div>
+              <details class="advanced">
+                <summary>Configuración avanzada</summary>
+                <div>
+                  <div>
+                    <label for="pub-hook-secret">Secret del hook</label>
+                    <input type="text" id="pub-hook-secret" autocomplete="off"
+                      placeholder="vacío = se genera uno aleatorio (recomendado)" />
+                  </div>
+                  <div>
+                    <label for="pub-permission">Permission mode</label>
+                    <select id="pub-permission">
+                      <option value="">sin permisos — el agente responde pero no escribe (default)</option>
+                      <option value="acceptEdits">acceptEdits — puede crear/editar archivos en su workdir</option>
+                      <option value="plan">plan — solo planifica, no ejecuta</option>
+                      <option value="auto">auto</option>
+                      <option value="manual">manual</option>
+                      <option value="dontAsk">dontAsk — no autoriza escrituras pese al nombre</option>
+                    </select>
+                    <p class="field-hint">
+                      Se pasa como --permission-mode de claude. Cuidado con acceptEdits: cualquiera
+                      que envíe una tarea puede hacer que el agente escriba en su workdir — usalo
+                      solo con workdir sandbox. bypassPermissions no se ofrece acá a propósito
+                      (solo por CLI). --visible y HMAC tampoco: el primero rompe el callback de
+                      resultados y el segundo llega en fase 2 — para esos casos creá el hook con
+                      awb add y usá el modo "Ya tengo un hook".
+                    </p>
+                  </div>
+                </div>
+              </details>
             </div>
             <div id="pub-existing-fields" hidden>
               <div>
@@ -581,6 +628,10 @@
           path = "/api/publish";
           payload.workdir = $("pub-workdir").value.trim();
           payload.promptTemplate = $("pub-template").value;
+          const customSecret = $("pub-hook-secret").value.trim();
+          if (customSecret) payload.secret = customSecret;
+          const permissionMode = $("pub-permission").value;
+          if (permissionMode) payload.permissionMode = permissionMode;
         } else {
           path = "/api/agents";
           payload.hookUrl = $("pub-hook-url").value.trim();

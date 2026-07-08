@@ -66,6 +66,13 @@ only) or registers an existing hook you already have. Each agent card also has a
 remove it from the registry (admin token required; the awb hook is left untouched — clean it up
 with `awb rm <name>` if you no longer want it).
 
+The form's *Configuración avanzada* covers a custom hook secret and claude's `--permission-mode`
+(e.g. `acceptEdits` for agents that must write files in their sandbox). Three things are
+deliberately CLI-only: `bypassPermissions` (too dangerous for a one-click UI), `--visible`
+(its callbacks carry no result, which breaks the job loop) and HMAC auth (the hub's runner
+doesn't sign requests yet — phase 2). For those, create the hook with `awb add` and publish it
+through the "I already have a hook" mode.
+
 ## How a job flows
 
 ```
@@ -106,7 +113,7 @@ hook, or timeout (default 5 minutes without a callback).
 |---|---|
 | `GET /api/agents` | Public agent list (no secrets, no hook URLs). |
 | `POST /api/agents` | Register an agent (`Authorization: Bearer <admin token>`). |
-| `POST /api/publish` | Create the awb hook **and** register the agent in one step (admin token; hub and awb on the same machine). |
+| `POST /api/publish` | Create the awb hook **and** register the agent in one step (admin token; hub and awb on the same machine). Body: `{name, description?, owner?, tags?, workdir?, promptTemplate?, secret?, permissionMode?}` — `permissionMode` accepts awb's modes except `bypassPermissions`, which stays CLI-only on purpose. |
 | `DELETE /api/agents/:name` | Remove an agent (admin token). |
 | `GET /api/jobs` · `GET /api/jobs/:id` | Job list / job status + result. |
 | `POST /api/jobs` | Submit `{ "agent": "...", "input": "..." }`. |

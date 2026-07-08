@@ -292,6 +292,26 @@ Workdir:    /home/you/agentmesh-sandbox</code></pre>
           <li><strong>Create the hook automatically</strong> — the hub writes the hook into awb's <code>hooks.json</code> (the broker re-reads it per request, so it's live immediately) and registers the agent, in one step (<code>POST /api/publish</code>). Works while hub and broker share the machine.</li>
           <li><strong>I already have an awb hook</strong> — paste its URL and secret; only the registry entry is created (<code>POST /api/agents</code>). This is the path remote operators will use in phase 2.</li>
         </ul>
+        <h3>Advanced options (create-hook mode)</h3>
+        <p>
+          The form's <em>Configuración avanzada</em> exposes two extra hook settings:
+        </p>
+        <ul>
+          <li><strong>Custom hook secret</strong> — leave empty to autogenerate one (recommended).</li>
+          <li><strong>Permission mode</strong> — passed through as claude's <code>--permission-mode</code>. The useful one is <code>acceptEdits</code>, for agents that must create/edit files; anyone who can submit a job can then make the agent write in its workdir, so only use it with a sandbox workdir.</li>
+        </ul>
+        <div class="callout warn">
+          <span class="tag">cli-only on purpose</span>
+          <p>
+            Three awb options are <strong>not</strong> offered by the form: <code>bypassPermissions</code>
+            (on a mesh agent it means anyone who can submit a job can run arbitrary commands on the
+            operator's machine — enabling it must stay a deliberate <code>awb add</code> act),
+            <code>--visible</code> (its callbacks carry no <code>result</code>, which breaks the job
+            loop), and HMAC auth (the hub's runner doesn't sign requests yet — phase 2). For those,
+            create the hook with <code>awb add</code> and publish it through the
+            "I already have a hook" mode.
+          </p>
+        </div>
         <div class="callout warn">
           <span class="tag">security</span>
           <p>
@@ -408,7 +428,7 @@ curl -s http://127.0.0.1:8892/health</code></pre>
             <tbody>
               <tr><td><code>GET /api/agents</code></td><td>Public agent list — name, description, owner, tags, enabled. No secrets, no hook URLs.</td></tr>
               <tr><td><code>POST /api/agents</code></td><td>Register/update an agent (<code>Authorization: Bearer &lt;admin token&gt;</code>). Body: <code>{name, hookUrl, secret, description?, owner?, tags?, enabled?}</code>.</td></tr>
-              <tr><td><code>POST /api/publish</code></td><td>Create the awb hook <strong>and</strong> register the agent in one step (admin token). Body: <code>{name, description?, owner?, tags?, workdir?, promptTemplate?}</code>. Requires hub and awb on the same machine.</td></tr>
+              <tr><td><code>POST /api/publish</code></td><td>Create the awb hook <strong>and</strong> register the agent in one step (admin token). Body: <code>{name, description?, owner?, tags?, workdir?, promptTemplate?, secret?, permissionMode?}</code> — <code>permissionMode</code> accepts awb's modes except <code>bypassPermissions</code> (CLI-only). Requires hub and awb on the same machine.</td></tr>
               <tr><td><code>DELETE /api/agents/:name</code></td><td>Remove an agent (admin token).</td></tr>
               <tr><td><code>GET /api/jobs</code> · <code>GET /api/jobs/:id</code></td><td>Recent jobs / one job's status + result.</td></tr>
               <tr><td><code>POST /api/jobs</code></td><td>Submit <code>{"agent":"…","input":"…"}</code>. Answers <code>202</code> with the pending job.</td></tr>
