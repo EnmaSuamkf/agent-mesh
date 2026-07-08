@@ -272,6 +272,15 @@ Workdir:    /home/you/agentmesh-sandbox</code></pre>
           </p>
         </div>
 
+        <h3>Removing an agent</h3>
+        <p>
+          Every agent card in the UI has a <strong>×</strong> button that removes the agent from
+          the registry (asks for confirmation; requires the admin token to be saved in the
+          browser). From the terminal, <code>mesh rm-agent &lt;name&gt;</code> does the same.
+          Either way <strong>the awb hook is left untouched</strong> — it can be re-published
+          later, or cleaned up with <code>awb rm &lt;name&gt;</code> if it's no longer wanted.
+        </p>
+
         <h3>Publishing from the UI (no terminal)</h3>
         <p>
           Both steps can also be done from the web UI: open

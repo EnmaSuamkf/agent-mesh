@@ -62,7 +62,9 @@ The same Claude can be published as many different agents: each awb hook with it
 **No terminal needed:** steps 2-3 can also be done from the web UI. Open
 `http://127.0.0.1:8892/#publicar`, paste the admin token (printed at hub startup), and the form
 either creates the awb hook and registers the agent in one go (`POST /api/publish`, local awb
-only) or registers an existing hook you already have.
+only) or registers an existing hook you already have. Each agent card also has a **×** button to
+remove it from the registry (admin token required; the awb hook is left untouched — clean it up
+with `awb rm <name>` if you no longer want it).
 
 ## How a job flows
 
@@ -110,6 +112,7 @@ hook, or timeout (default 5 minutes without a callback).
 | `POST /api/jobs` | Submit `{ "agent": "...", "input": "..." }`. |
 | `POST /api/jobs/:id/result` | awb's result callback (per-job `?token=`). |
 | `GET /` | The web UI. |
+| `GET /health` | Liveness + agent count. |
 
 ## Roadmap
 
