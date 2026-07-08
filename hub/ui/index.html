@@ -280,31 +280,6 @@
         </p>
       </header>
 
-      <section aria-labelledby="agents-h">
-        <h2 id="agents-h">Agentes disponibles</h2>
-        <div class="agents" id="agents"><p class="empty">Cargando…</p></div>
-        <p class="agents-msg" id="agents-msg"></p>
-      </section>
-
-      <section aria-labelledby="submit-h">
-        <h2 id="submit-h">Enviar tarea</h2>
-        <form id="submit-form">
-          <div>
-            <label for="agent-select">Agente</label>
-            <select id="agent-select" required></select>
-          </div>
-          <div>
-            <label for="input-text">Tarea</label>
-            <textarea id="input-text" required
-              placeholder="Ej.: Analizá este texto y resumilo en tres puntos…"></textarea>
-          </div>
-          <div class="submit-row">
-            <button type="submit" id="submit-btn">Enviar</button>
-            <p class="form-msg" id="form-msg"></p>
-          </div>
-        </form>
-      </section>
-
       <section aria-labelledby="publish-h">
         <h2 id="publish-h">Publicar agente</h2>
         <details class="publish">
@@ -370,6 +345,31 @@
             </div>
           </form>
         </details>
+      </section>
+
+      <section aria-labelledby="agents-h">
+        <h2 id="agents-h">Agentes disponibles</h2>
+        <div class="agents" id="agents"><p class="empty">Cargando…</p></div>
+        <p class="agents-msg" id="agents-msg"></p>
+      </section>
+
+      <section aria-labelledby="submit-h">
+        <h2 id="submit-h">Enviar tarea</h2>
+        <form id="submit-form">
+          <div>
+            <label for="agent-select">Agente</label>
+            <select id="agent-select" required></select>
+          </div>
+          <div>
+            <label for="input-text">Tarea</label>
+            <textarea id="input-text" required
+              placeholder="Ej.: Analizá este texto y resumilo en tres puntos…"></textarea>
+          </div>
+          <div class="submit-row">
+            <button type="submit" id="submit-btn">Enviar</button>
+            <p class="form-msg" id="form-msg"></p>
+          </div>
+        </form>
       </section>
 
       <section aria-labelledby="jobs-h">
