@@ -349,7 +349,7 @@ curl -s http://127.0.0.1:8892/api/jobs/&lt;id&gt;</code></pre>
           "New session vs. resume" section of agent-webhook-bridge's docs). Three equivalent ways:
         </p>
         <ul>
-          <li><strong>UI</strong>: expand a finished job and hit <em>Continuar esta conversación</em> — it pre-fills the agent and the session id in the submit form (also editable by hand under <em>Continuar una sesión anterior</em>).</li>
+          <li><strong>UI</strong>: the jobs table has a <em>Sesión</em> column — click a job's session chip (an <code>↻</code> prefix marks runs that were themselves continuations) and the submit form is pre-filled with the agent and session id; same for the <em>Continuar esta conversación</em> button inside the expanded job. Jobs with no recorded session (failed runs, or runs older than the result callback) show <code>stateless</code> and can't be continued. The field is also editable by hand under <em>Continuar una sesión anterior</em>.</li>
           <li><strong>CLI</strong>: <code>mesh submit traductor --session-id &lt;id&gt; "…"</code> — the id to continue from is printed with every finished job.</li>
           <li><strong>API</strong>: add <code>"sessionId": "&lt;id&gt;"</code> to the <code>POST /api/jobs</code> body.</li>
         </ul>

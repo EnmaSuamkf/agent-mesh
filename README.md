@@ -88,8 +88,9 @@ hook, or timeout (default 5 minutes without a callback).
 
 **Continuing a conversation:** every finished job carries the Claude `sessionId` of its run.
 Submit a new job with that id and the agent resumes the session with all its prior context
-instead of starting fresh — from the UI (the *Continuar esta conversación* button on a finished
-job, or the *Continuar una sesión anterior* field), the CLI (`mesh submit <agent>
+instead of starting fresh — from the UI (the *Sesión* column chip on any job — `↻` marks runs
+that were continuations, `stateless` marks jobs with no session to continue — or the *Continuar
+esta conversación* button on a finished job), the CLI (`mesh submit <agent>
 --session-id <id> …`) or the API (`"sessionId"` in the `POST /api/jobs` body). Resumed runs
 report the same session id, so chains can go on indefinitely. Phase-1 caveat: job history —
 session ids included — is visible to anyone with access to the hub; per-user isolation comes
