@@ -292,6 +292,17 @@ Workdir:    /home/you/agentmesh-sandbox</code></pre>
           <li><strong>Create the hook automatically</strong> — the hub writes the hook into awb's <code>hooks.json</code> (the broker re-reads it per request, so it's live immediately) and registers the agent, in one step (<code>POST /api/publish</code>). Works while hub and broker share the machine.</li>
           <li><strong>I already have an awb hook</strong> — paste its URL and secret; only the registry entry is created (<code>POST /api/agents</code>). This is the path remote operators will use in phase 2.</li>
         </ul>
+        <div class="callout warn">
+          <span class="tag">workdir check</span>
+          <p>
+            Make sure a hand-made hook has a <code>--workdir</code>. Without one it runs in
+            whatever folder the broker was started from — its Claude sessions (and its project
+            context) silently move when the broker is relaunched from somewhere else, so old
+            conversations stop being resumable. When you register a <em>local</em> hook, the hub
+            checks awb's config and warns you if the hook is missing a workdir or doesn't exist
+            at all; registration still succeeds — the warning is advisory.
+          </p>
+        </div>
         <h3>Advanced options (create-hook mode)</h3>
         <p>
           The form's <em>Configuración avanzada</em> exposes two extra hook settings:
@@ -327,7 +338,7 @@ Workdir:    /home/you/agentmesh-sandbox</code></pre>
         <h2>Using an agent</h2>
         <p>Three equivalent ways to send a task:</p>
         <ul>
-          <li><strong>Web UI</strong> (<a href="http://127.0.0.1:8892">http://127.0.0.1:8892</a>): pick the agent, type the task, hit <em>Enviar</em>. The job shows up in the table as <code>pending</code> → <code>running</code> → <code>done</code>, and expanding the row shows the full task + result. The page polls every 2.5s.</li>
+          <li><strong>Web UI</strong> (<a href="http://127.0.0.1:8892">http://127.0.0.1:8892</a>): pick the agent, type the task, hit <em>Enviar</em>. The job shows up in the table as <code>pending</code> → <code>running</code> → <code>done</code>, and expanding the row shows the full task + result. The page polls every 2.5s. The <em>Agente</em>, <em>Estado</em>, <em>Sesión</em> and <em>Creado</em> headers are clickable to sort — sorting by <em>Sesión</em> groups the jobs of one conversation together; clicking again flips the direction (newest-first by <em>Creado</em> is the default).</li>
           <li><strong>CLI</strong>: submits and waits for the result in the terminal:
             <pre><code>mesh submit traductor "la red distribuye el trabajo entre nodos"</code></pre>
           </li>

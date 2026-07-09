@@ -47,6 +47,40 @@ function loadAwbConfig(): AwbConfig {
 
 export class HookExistsError extends Error {}
 
+export interface LocalHookInfo {
+	/** false when the URL doesn't point at this machine's awb broker. */
+	local: boolean;
+	found?: boolean;
+	name?: string;
+	hasWorkdir?: boolean;
+}
+
+/**
+ * Looks a hook URL up in the local awb config, so registration can warn
+ * about hooks that don't exist or lack a workdir (a workdir-less hook runs
+ * in whatever folder the broker was started from, which moves its Claude
+ * sessions — and its project context — across broker restarts). Remote URLs
+ * come back `local: false` and are never judged: phase 2 nodes manage their
+ * own hooks.
+ */
+export function inspectLocalHook(hookUrl: string): LocalHookInfo {
+	let url: URL;
+	try {
+		url = new URL(hookUrl);
+	} catch {
+		return { local: false };
+	}
+	const cfg = loadAwbConfig();
+	const loopback = new Set(["127.0.0.1", "localhost", "[::1]"]);
+	if (!loopback.has(url.hostname) || Number(url.port || 80) !== cfg.port) return { local: false };
+	const parts = url.pathname.split("/").filter(Boolean);
+	if (parts[0] !== "hook" || !parts[1]) return { local: false };
+	const name = decodeURIComponent(parts[1]);
+	const hook = cfg.hooks[name];
+	if (!hook) return { local: true, found: false, name };
+	return { local: true, found: true, name, hasWorkdir: typeof hook.workdir === "string" && hook.workdir !== "" };
+}
+
 /**
  * Permission modes the hub is willing to write into a hook. Mirrors awb's
  * list minus `bypassPermissions`: on a mesh agent that would let anyone who

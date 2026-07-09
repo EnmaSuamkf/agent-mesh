@@ -10,6 +10,7 @@
  * through the HTTP API instead, since submitting is what remote users will
  * do and this exercises the same path.
  */
+import { inspectLocalHook } from "./awb.ts";
 import { loadConfig } from "./config.ts";
 import { type Agent, deleteAgent, getAgent, listAgents, saveAgent } from "./db.ts";
 import { startHub } from "./daemon.ts";
@@ -121,6 +122,14 @@ async function main(): Promise<void> {
 			enabled: !rest.includes("--disabled"),
 		});
 		console.log(describeAgent(agent));
+		const info = inspectLocalHook(hookUrl);
+		if (info.local && info.found === false) {
+			console.warn(`\n⚠ No existe un hook '${info.name}' en el awb local — los jobs van a fallar hasta que lo crees.`);
+		} else if (info.local && info.found && !info.hasWorkdir) {
+			console.warn(
+				`\n⚠ El hook '${info.name}' no tiene workdir: corre en la carpeta del broker y sus sesiones de Claude pueden perderse entre reinicios. Recrealo con --workdir.`,
+			);
+		}
 		return;
 	}
 

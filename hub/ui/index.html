@@ -253,6 +253,7 @@
       button:disabled{ background: var(--accent-dim); cursor: wait; }
       .form-msg{ font-size: 0.85rem; color: var(--muted); margin: 0; }
       .form-msg.error{ color: var(--fail); }
+      .form-msg.warn{ color: var(--warn); }
 
       .table-wrap{ overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
       table{ width: 100%; border-collapse: collapse; font-size: 0.86rem; }
@@ -268,8 +269,10 @@
         background: var(--surface);
         white-space: nowrap;
       }
-      td.job-id{ font-family: var(--mono); font-size: 0.76rem; color: var(--faint); white-space: nowrap; }
+      td.job-id, td.job-time{ font-family: var(--mono); font-size: 0.76rem; color: var(--faint); white-space: nowrap; }
       td.job-agent{ font-family: var(--mono); font-size: 0.8rem; white-space: nowrap; }
+      th.sortable{ cursor: pointer; user-select: none; }
+      th.sortable:hover{ color: var(--accent); }
       .status{
         font-family: var(--mono);
         font-size: 0.72rem;
@@ -470,9 +473,16 @@
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>Job</th><th>Agente</th><th>Estado</th><th>Sesión</th><th>Tarea / resultado</th></tr>
+              <tr>
+                <th>Job</th>
+                <th class="sortable" data-sort="agent">Agente</th>
+                <th class="sortable" data-sort="status">Estado</th>
+                <th class="sortable" data-sort="sessionId">Sesión</th>
+                <th class="sortable" data-sort="createdAt">Creado</th>
+                <th>Tarea / resultado</th>
+              </tr>
             </thead>
-            <tbody id="jobs"><tr><td colspan="5" class="empty">Sin jobs todavía.</td></tr></tbody>
+            <tbody id="jobs"><tr><td colspan="6" class="empty">Sin jobs todavía.</td></tr></tbody>
           </table>
         </div>
       </section>
@@ -540,12 +550,58 @@
         if ([...select.options].some((o) => o.value === selected)) select.value = selected;
       }
 
+      // --- Jobs sorting: click a header to order/group; createdAt desc by default. ---
+      let lastJobs = [];
+      let jobSort = { key: "createdAt", dir: -1 };
+
+      function sortedJobs() {
+        const { key, dir } = jobSort;
+        return [...lastJobs].sort((a, b) => {
+          // Jobs without a value (e.g. stateless rows when grouping by session) go last.
+          if (!a[key] && b[key]) return 1;
+          if (a[key] && !b[key]) return -1;
+          const av = a[key] ?? "";
+          const bv = b[key] ?? "";
+          if (av < bv) return -1 * dir;
+          if (av > bv) return 1 * dir;
+          return a.createdAt < b.createdAt ? 1 : -1;
+        });
+      }
+
+      function updateSortIndicators() {
+        for (const th of document.querySelectorAll("th.sortable")) {
+          const base = th.textContent.replace(/ [▾▴]$/, "");
+          th.textContent = th.dataset.sort === jobSort.key ? `${base} ${jobSort.dir === -1 ? "▾" : "▴"}` : base;
+        }
+      }
+
+      for (const th of document.querySelectorAll("th.sortable")) {
+        th.addEventListener("click", () => {
+          if (jobSort.key === th.dataset.sort) {
+            jobSort.dir = -jobSort.dir;
+          } else {
+            jobSort = { key: th.dataset.sort, dir: th.dataset.sort === "createdAt" ? -1 : 1 };
+          }
+          updateSortIndicators();
+          renderJobs(sortedJobs());
+        });
+      }
+      updateSortIndicators();
+
+      function fmtTime(iso) {
+        const d = new Date(iso);
+        const hm = d.toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
+        return d.toDateString() === new Date().toDateString()
+          ? hm
+          : `${d.toLocaleDateString("es", { day: "2-digit", month: "2-digit" })} ${hm}`;
+      }
+
       function renderJobs(jobs) {
         const tbody = $("jobs");
         tbody.replaceChildren();
         if (jobs.length === 0) {
           const td = el("td", "empty", "Sin jobs todavía.");
-          td.colSpan = 4;
+          td.colSpan = 6;
           tbody.appendChild(el("tr")).appendChild(td);
           return;
         }
@@ -569,6 +625,7 @@
             sessTd.appendChild(none);
           }
           tr.appendChild(sessTd);
+          tr.appendChild(el("td", "job-time", fmtTime(job.createdAt)));
 
           const cell = el("td");
           const details = document.createElement("details");
@@ -636,7 +693,8 @@
         try {
           const [agentsData, jobsData] = await Promise.all([api("/api/agents"), api("/api/jobs")]);
           renderAgents(agentsData.agents);
-          renderJobs(jobsData.jobs);
+          lastJobs = jobsData.jobs;
+          renderJobs(sortedJobs());
           $("hub-status").textContent = "hub online";
           $("hub-status").classList.remove("offline");
         } catch {
@@ -725,16 +783,21 @@
           }
         }
         btn.disabled = true;
-        msg.classList.remove("error");
+        msg.classList.remove("error", "warn");
         msg.textContent = "Publicando…";
         try {
-          const { agent } = await api(path, {
+          const data = await api(path, {
             method: "POST",
             headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
             body: JSON.stringify(payload),
           });
           localStorage.setItem("meshAdminToken", token);
-          msg.textContent = `Agente '${agent.name}' publicado — ya aparece arriba.`;
+          if (data.warning) {
+            msg.classList.add("warn");
+            msg.textContent = `Agente '${data.agent.name}' publicado, pero ojo: ${data.warning}`;
+          } else {
+            msg.textContent = `Agente '${data.agent.name}' publicado — ya aparece arriba.`;
+          }
           $("publish-form").reset();
           $("pub-token").value = token;
           await refresh();

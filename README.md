@@ -66,6 +66,11 @@ only) or registers an existing hook you already have. Each agent card also has a
 remove it from the registry (admin token required; the awb hook is left untouched — clean it up
 with `awb rm <name>` if you no longer want it).
 
+When registering an **existing local hook**, the hub checks awb's config and warns (without
+blocking) if the hook doesn't exist or lacks a `--workdir` — a workdir-less hook runs in whatever
+folder the broker was started from, so its Claude sessions stop being resumable when the broker
+is relaunched from somewhere else. The `mesh add-agent` CLI prints the same warnings.
+
 The form's *Configuración avanzada* covers a custom hook secret and claude's `--permission-mode`
 (e.g. `acceptEdits` for agents that must write files in their sandbox). Three things are
 deliberately CLI-only: `bypassPermissions` (too dangerous for a one-click UI), `--visible`
@@ -85,6 +90,9 @@ hub    →  job done — the UI sees it on the next poll (every 2.5s)
 
 Failures surface as `failed` jobs with a reason: bad secret (rejected immediately), unreachable
 hook, or timeout (default 5 minutes without a callback).
+
+The jobs table sorts by any of its headers (*Agente*, *Estado*, *Sesión*, *Creado*) — sorting by
+*Sesión* groups the jobs of one conversation together; newest-first by *Creado* is the default.
 
 **Continuing a conversation:** every finished job carries the Claude `sessionId` of its run.
 Submit a new job with that id and the agent resumes the session with all its prior context

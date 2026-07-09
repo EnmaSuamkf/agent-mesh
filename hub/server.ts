@@ -25,6 +25,7 @@ import * as path from "node:path";
 import {
 	createAwbHook,
 	HookExistsError,
+	inspectLocalHook,
 	PUBLISHABLE_PERMISSION_MODES,
 	type PublishablePermissionMode,
 } from "./awb.ts";
@@ -181,8 +182,16 @@ export function createServer(cfg: HubConfig, log: Logger): http.Server {
 						tags: Array.isArray(body.tags) ? body.tags.map(String) : [],
 						enabled: body.enabled !== false,
 					});
-					log(`agent '${name}' registered`);
-					sendJson(res, 200, { agent: publicAgent(agent) });
+					// Registration succeeds either way; the warning is advisory.
+					let warning: string | undefined;
+					const info = inspectLocalHook(hookUrl);
+					if (info.local && info.found === false) {
+						warning = `no existe un hook '${info.name}' en el awb local — los jobs van a fallar hasta que lo crees`;
+					} else if (info.local && info.found && !info.hasWorkdir) {
+						warning = `el hook '${info.name}' no tiene workdir: corre en la carpeta del broker y sus sesiones de Claude pueden perderse entre reinicios — recrealo con --workdir`;
+					}
+					log(`agent '${name}' registered${warning ? ` (warning: ${warning})` : ""}`);
+					sendJson(res, 200, { agent: publicAgent(agent), ...(warning ? { warning } : {}) });
 				});
 				return;
 			}
