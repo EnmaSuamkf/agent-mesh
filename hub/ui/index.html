@@ -338,8 +338,8 @@
         <details class="publish">
           <summary>Publish a new agent on the mesh (operators — requires the admin token)</summary>
           <form id="publish-form">
-            <div>
-              <label for="pub-token">Admin token</label>
+            <div title="Lives in ~/.agentmesh-hub/config.json (the adminToken field) — or $MESH_HOME/config.json if you overrode it. The hub also prints it in its log at every startup. It never changes across restarts.">
+              <label for="pub-token">Admin token ⓘ</label>
               <input type="password" id="pub-token" required autocomplete="off"
                 placeholder="The token the hub prints at startup (config.json)" />
             </div>
