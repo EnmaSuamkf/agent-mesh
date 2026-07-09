@@ -668,11 +668,12 @@
       async function removeAgent(name) {
         const msg = $("agents-msg");
         msg.classList.remove("error");
-        const token = (localStorage.getItem("meshAdminToken") || "").trim();
+        let token = (localStorage.getItem("meshAdminToken") || "").trim();
         if (!token) {
-          msg.classList.add("error");
-          msg.textContent = "Removing needs the admin token: save it by publishing (or trying to) in the form above.";
-          return;
+          token = (prompt(
+            "Admin token — it lives in ~/.agentmesh-hub/config.json (adminToken) and the hub prints it at startup:",
+          ) || "").trim();
+          if (!token) return;
         }
         if (!confirm(`Remove '${name}' from the registry? The awb hook is left untouched (remove it with \`awb rm ${name}\`).`)) return;
         try {
@@ -680,13 +681,18 @@
             method: "DELETE",
             headers: { authorization: `Bearer ${token}` },
           });
+          // Only a token the server accepted gets remembered.
+          localStorage.setItem("meshAdminToken", token);
           msg.textContent = `Agent '${name}' removed from the registry.`;
           await refresh();
         } catch (err) {
           msg.classList.add("error");
-          msg.textContent = err.message === "unauthorized"
-            ? "Invalid admin token — save it again in the publish form."
-            : `Could not remove: ${err.message}`;
+          if (err.message === "unauthorized") {
+            localStorage.removeItem("meshAdminToken");
+            msg.textContent = "Invalid admin token — click × again to retry.";
+          } else {
+            msg.textContent = `Could not remove: ${err.message}`;
+          }
         }
       }
 
