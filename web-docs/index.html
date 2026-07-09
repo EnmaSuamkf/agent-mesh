@@ -339,6 +339,31 @@ Workdir:    /home/you/agentmesh-sandbox</code></pre>
 curl -s http://127.0.0.1:8892/api/jobs/&lt;id&gt;</code></pre>
           </li>
         </ul>
+
+        <h3>Continuing a conversation (<code>sessionId</code>)</h3>
+        <p>
+          Every finished job carries the Claude <code>sessionId</code> of its run. Submit a new
+          job with that id and the agent <strong>resumes the session with all its prior
+          context</strong> instead of starting fresh (under the hood the hub forwards it as the
+          <code>sessionId</code> header, and awb runs <code>claude --resume</code> — see the
+          "New session vs. resume" section of agent-webhook-bridge's docs). Three equivalent ways:
+        </p>
+        <ul>
+          <li><strong>UI</strong>: expand a finished job and hit <em>Continuar esta conversación</em> — it pre-fills the agent and the session id in the submit form (also editable by hand under <em>Continuar una sesión anterior</em>).</li>
+          <li><strong>CLI</strong>: <code>mesh submit traductor --session-id &lt;id&gt; "…"</code> — the id to continue from is printed with every finished job.</li>
+          <li><strong>API</strong>: add <code>"sessionId": "&lt;id&gt;"</code> to the <code>POST /api/jobs</code> body.</li>
+        </ul>
+        <p>
+          Resumed runs report the same session id, so chains can go on indefinitely.
+        </p>
+        <div class="callout warn">
+          <span class="tag">phase-1 caveat</span>
+          <p>
+            Job history — session ids included — is visible to anyone with access to the hub, so
+            in a shared hub someone else could resume "your" conversation. Per-user isolation
+            arrives with the phase-2 API keys.
+          </p>
+        </div>
       </section>
 
       <section id="how-a-job-flows">
@@ -413,7 +438,7 @@ curl -s http://127.0.0.1:8892/health</code></pre>
               <tr><td><code>mesh add-agent &lt;name&gt; --hook-url &lt;url&gt; --secret &lt;s&gt; [--description d] [--owner o] [--tag t] [--disabled]</code></td><td>Publishes (or updates) an agent. <code>--tag</code> is repeatable; <code>--disabled</code> hides it from job submission.</td></tr>
               <tr><td><code>mesh rm-agent &lt;name&gt;</code></td><td>Removes an agent.</td></tr>
               <tr><td><code>mesh list</code></td><td>Lists published agents.</td></tr>
-              <tr><td><code>mesh submit &lt;agent&gt; &lt;input...&gt;</code></td><td>Submits a job and waits, printing the result (exit 1 if it fails).</td></tr>
+              <tr><td><code>mesh submit &lt;agent&gt; [--session-id &lt;id&gt;] &lt;input...&gt;</code></td><td>Submits a job and waits, printing the result (exit 1 if it fails). With <code>--session-id</code> the agent resumes that Claude session instead of starting fresh.</td></tr>
               <tr><td><code>mesh jobs</code></td><td>Shows recent jobs.</td></tr>
             </tbody>
           </table>
@@ -431,7 +456,7 @@ curl -s http://127.0.0.1:8892/health</code></pre>
               <tr><td><code>POST /api/publish</code></td><td>Create the awb hook <strong>and</strong> register the agent in one step (admin token). Body: <code>{name, description?, owner?, tags?, workdir?, promptTemplate?, secret?, permissionMode?}</code> — <code>permissionMode</code> accepts awb's modes except <code>bypassPermissions</code> (CLI-only). Requires hub and awb on the same machine.</td></tr>
               <tr><td><code>DELETE /api/agents/:name</code></td><td>Remove an agent (admin token).</td></tr>
               <tr><td><code>GET /api/jobs</code> · <code>GET /api/jobs/:id</code></td><td>Recent jobs / one job's status + result.</td></tr>
-              <tr><td><code>POST /api/jobs</code></td><td>Submit <code>{"agent":"…","input":"…"}</code>. Answers <code>202</code> with the pending job.</td></tr>
+              <tr><td><code>POST /api/jobs</code></td><td>Submit <code>{"agent":"…","input":"…","sessionId"?}</code> — with <code>sessionId</code> the run resumes that Claude session. Answers <code>202</code> with the pending job.</td></tr>
               <tr><td><code>POST /api/jobs/:id/result</code></td><td>awb's result callback, authenticated with the per-job <code>?token=</code>. Not meant to be called by hand.</td></tr>
               <tr><td><code>GET /</code></td><td>The web UI.</td></tr>
               <tr><td><code>GET /health</code></td><td>Liveness + agent count.</td></tr>

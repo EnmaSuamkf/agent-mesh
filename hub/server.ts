@@ -79,6 +79,7 @@ function publicJob(job: Job): Record<string, unknown> {
 		result: job.result,
 		error: job.error,
 		sessionId: job.sessionId,
+		resumeSessionId: job.resumeSessionId,
 		createdAt: job.createdAt,
 		finishedAt: job.finishedAt,
 	};
@@ -292,7 +293,16 @@ export function createServer(cfg: HubConfig, log: Logger): http.Server {
 						sendJson(res, 400, { error: "input is required" });
 						return;
 					}
-					const job = insertJob(agent.name, input);
+					let resumeSessionId: string | undefined;
+					if (typeof body.sessionId === "string" && body.sessionId.trim() !== "") {
+						resumeSessionId = body.sessionId.trim();
+						// It travels as an HTTP header to awb — keep it to a sane id shape.
+						if (!/^[A-Za-z0-9-]{8,64}$/.test(resumeSessionId)) {
+							sendJson(res, 400, { error: "invalid sessionId" });
+							return;
+						}
+					}
+					const job = insertJob(agent.name, input, resumeSessionId);
 					// Answer right away with the pending job; dispatch runs in the
 					// background and the caller polls GET /api/jobs/:id.
 					void dispatchJob(job, agent, cfg, log);

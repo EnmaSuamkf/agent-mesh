@@ -113,6 +113,19 @@
         flex-shrink: 0;
       }
       .del-btn:hover{ color: var(--fail); border-color: var(--fail); }
+      .resume-btn{
+        background: none;
+        border: 1px solid var(--accent-dim);
+        border-radius: 6px;
+        color: var(--accent);
+        font-family: var(--mono);
+        font-size: 0.74rem;
+        font-weight: 400;
+        padding: 0.3rem 0.7rem;
+        cursor: pointer;
+        margin-top: 0.5rem;
+      }
+      .resume-btn:hover{ border-color: var(--accent); }
       .agents-msg{ font-size: 0.85rem; color: var(--muted); margin: 0.7rem 0 0; }
       .agents-msg.error{ color: var(--fail); }
       .agent-card p{ margin: 0 0 0.5rem; font-size: 0.88rem; color: var(--muted); }
@@ -412,6 +425,20 @@
             <textarea id="input-text" required
               placeholder="Ej.: Analizá este texto y resumilo en tres puntos…"></textarea>
           </div>
+          <details class="advanced" id="resume-details">
+            <summary>Continuar una sesión anterior</summary>
+            <div>
+              <div>
+                <label for="session-id">Session ID</label>
+                <input type="text" id="session-id" autocomplete="off"
+                  placeholder="vacío = sesión nueva. El id aparece en cada job terminado." />
+                <p class="field-hint">
+                  Con un session id, el agente retoma esa conversación con todo su contexto en vez
+                  de empezar de cero. El botón "Continuar" de un job terminado lo completa solo.
+                </p>
+              </div>
+            </div>
+          </details>
           <div class="submit-row">
             <button type="submit" id="submit-btn">Enviar</button>
             <p class="form-msg" id="form-msg"></p>
@@ -521,8 +548,22 @@
           const body = job.status === "failed"
             ? `⚠ ${job.error || "falló sin detalle"}`
             : job.result ?? (job.status === "done" ? "(resultado vacío)" : "… trabajando");
-          const pre = el("pre", null, `Tarea:\n${job.input}\n\nResultado:\n${body}`);
+          const resumedNote = job.resumeSessionId ? `\n(continuación de la sesión ${job.resumeSessionId})` : "";
+          const sessionNote = job.sessionId ? `\n\nsession: ${job.sessionId}` : "";
+          const pre = el("pre", null, `Tarea:${resumedNote}\n${job.input}\n\nResultado:\n${body}${sessionNote}`);
           details.appendChild(pre);
+          if (job.status === "done" && job.sessionId) {
+            const cont = el("button", "resume-btn", "Continuar esta conversación →");
+            cont.type = "button";
+            cont.addEventListener("click", () => {
+              $("agent-select").value = job.agent;
+              $("session-id").value = job.sessionId;
+              $("resume-details").open = true;
+              $("submit-form").scrollIntoView({ behavior: "smooth" });
+              $("input-text").focus();
+            });
+            details.appendChild(cont);
+          }
           cell.appendChild(details);
           tr.appendChild(cell);
           tbody.appendChild(tr);
@@ -573,6 +614,7 @@
         const msg = $("form-msg");
         const agent = $("agent-select").value;
         const input = $("input-text").value.trim();
+        const sessionId = $("session-id").value.trim();
         if (!agent || !input) return;
         btn.disabled = true;
         msg.classList.remove("error");
@@ -581,11 +623,14 @@
           const { job } = await api("/api/jobs", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ agent, input }),
+            body: JSON.stringify({ agent, input, ...(sessionId ? { sessionId } : {}) }),
           });
           openJobIds.add(job.id);
           $("input-text").value = "";
-          msg.textContent = `Job ${job.id.slice(0, 8)} enviado — el resultado aparece abajo.`;
+          $("session-id").value = "";
+          msg.textContent = sessionId
+            ? `Job ${job.id.slice(0, 8)} enviado (continúa la sesión ${sessionId.slice(0, 8)}…) — el resultado aparece abajo.`
+            : `Job ${job.id.slice(0, 8)} enviado — el resultado aparece abajo.`;
           await refresh();
         } catch (err) {
           msg.classList.add("error");

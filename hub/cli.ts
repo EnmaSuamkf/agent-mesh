@@ -31,7 +31,12 @@ Commands:
     --disabled                           Register it hidden from job submission
   rm-agent <name>                        Remove an agent
   list                                   List agents
-  submit <agent> <input...>              Submit a job and wait for its result
+  submit <agent> [--session-id <id>] <input...>
+                                          Submit a job and wait for its result
+                                          (with --session-id, the agent resumes that
+                                          Claude session instead of starting fresh —
+                                          every finished job prints/stores the session
+                                          id to continue from)
   jobs                                   Show recent jobs
 `);
 }
@@ -132,19 +137,21 @@ async function main(): Promise<void> {
 
 	if (cmd === "submit") {
 		const [agentName, ...inputParts] = rest;
+		const sessionId = flagValue(inputParts, "--session-id");
+		if (sessionId) inputParts.splice(inputParts.indexOf("--session-id"), 2);
 		const input = inputParts.join(" ").trim();
 		if (!agentName || !getAgent(agentName) || !input) {
-			console.error("Usage: mesh submit <agent> <input...> (agent must exist — see `mesh list`).");
+			console.error("Usage: mesh submit <agent> [--session-id <id>] <input...> (agent must exist — see `mesh list`).");
 			process.exitCode = 1;
 			return;
 		}
 
-		let job: { id: string; status: string; result: string | null; error: string | null };
+		let job: { id: string; status: string; result: string | null; error: string | null; sessionId: string | null };
 		try {
 			const res = await fetch(`${apiBase}/jobs`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ agent: agentName, input }),
+				body: JSON.stringify({ agent: agentName, input, ...(sessionId ? { sessionId } : {}) }),
 			});
 			const data = (await res.json()) as { job?: typeof job; error?: string };
 			if (!res.ok || !data.job) {
@@ -168,6 +175,9 @@ async function main(): Promise<void> {
 
 		if (job.status === "done") {
 			console.log(`\n${job.result ?? "(empty result)"}`);
+			if (job.sessionId) {
+				console.log(`\n(session: ${job.sessionId} — continue it with --session-id)`);
+			}
 		} else {
 			console.error(`\nJob failed: ${job.error ?? "unknown error"}`);
 			process.exitCode = 1;

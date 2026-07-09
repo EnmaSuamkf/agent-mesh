@@ -86,6 +86,15 @@ hub    →  job done — the UI sees it on the next poll (every 2.5s)
 Failures surface as `failed` jobs with a reason: bad secret (rejected immediately), unreachable
 hook, or timeout (default 5 minutes without a callback).
 
+**Continuing a conversation:** every finished job carries the Claude `sessionId` of its run.
+Submit a new job with that id and the agent resumes the session with all its prior context
+instead of starting fresh — from the UI (the *Continuar esta conversación* button on a finished
+job, or the *Continuar una sesión anterior* field), the CLI (`mesh submit <agent>
+--session-id <id> …`) or the API (`"sessionId"` in the `POST /api/jobs` body). Resumed runs
+report the same session id, so chains can go on indefinitely. Phase-1 caveat: job history —
+session ids included — is visible to anyone with access to the hub; per-user isolation comes
+with the phase-2 API keys.
+
 ## Security model (phase 1)
 
 - Hub, awb and the agents all bind to `127.0.0.1` — nothing listens on the network.
@@ -104,7 +113,7 @@ hook, or timeout (default 5 minutes without a callback).
 | `mesh add-agent <name> --hook-url <url> --secret <s> [--description d] [--owner o] [--tag t] [--disabled]` | Publishes (or updates) an agent. |
 | `mesh rm-agent <name>` | Removes an agent. |
 | `mesh list` | Lists published agents. |
-| `mesh submit <agent> <input...>` | Submits a job and waits for the result. |
+| `mesh submit <agent> [--session-id <id>] <input...>` | Submits a job and waits for the result. With `--session-id` the agent resumes that Claude session; the id to continue from is printed with every finished job. |
 | `mesh jobs` | Shows recent jobs and their status. |
 
 ## API
@@ -116,7 +125,7 @@ hook, or timeout (default 5 minutes without a callback).
 | `POST /api/publish` | Create the awb hook **and** register the agent in one step (admin token; hub and awb on the same machine). Body: `{name, description?, owner?, tags?, workdir?, promptTemplate?, secret?, permissionMode?}` — `permissionMode` accepts awb's modes except `bypassPermissions`, which stays CLI-only on purpose. |
 | `DELETE /api/agents/:name` | Remove an agent (admin token). |
 | `GET /api/jobs` · `GET /api/jobs/:id` | Job list / job status + result. |
-| `POST /api/jobs` | Submit `{ "agent": "...", "input": "..." }`. |
+| `POST /api/jobs` | Submit `{ "agent": "...", "input": "...", "sessionId"? }` — with `sessionId` the run resumes that Claude session. |
 | `POST /api/jobs/:id/result` | awb's result callback (per-job `?token=`). |
 | `GET /` | The web UI. |
 | `GET /health` | Liveness + agent count. |

@@ -19,7 +19,13 @@ export async function dispatchJob(job: Job, agent: Agent, cfg: HubConfig, log: L
 	try {
 		const res = await fetch(agent.hookUrl, {
 			method: "POST",
-			headers: { "content-type": "application/json", "x-webhook-secret": agent.secret },
+			headers: {
+				"content-type": "application/json",
+				"x-webhook-secret": agent.secret,
+				// awb resumes that Claude session (`claude --resume`) instead of
+				// starting a fresh one when this header is present.
+				...(job.resumeSessionId ? { sessionid: job.resumeSessionId } : {}),
+			},
 			body: JSON.stringify({ jobId: job.id, input: job.input, callbackUrl }),
 			signal: AbortSignal.timeout(DISPATCH_TIMEOUT_MS),
 		});

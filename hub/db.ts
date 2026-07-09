@@ -35,7 +35,10 @@ export interface Job {
 	status: JobStatus;
 	result: string | null;
 	error: string | null;
+	/** Claude session this run produced, reported by awb's callback. */
 	sessionId: string | null;
+	/** Claude session the caller asked to resume (forwarded to awb as the `sessionId` header). */
+	resumeSessionId: string | null;
 	/** Per-job token that authenticates awb's POST to /api/jobs/:id/result. */
 	callbackToken: string;
 	createdAt: string;
@@ -70,11 +73,19 @@ function open(): DatabaseSync {
 			result TEXT,
 			error TEXT,
 			session_id TEXT,
+			resume_session_id TEXT,
 			callback_token TEXT NOT NULL,
 			created_at TEXT NOT NULL,
 			finished_at TEXT
 		);
 	`);
+	// Migration for databases created before resume support; ALTER fails
+	// harmlessly once the column exists.
+	try {
+		db.exec("ALTER TABLE jobs ADD COLUMN resume_session_id TEXT;");
+	} catch {
+		// Column already there.
+	}
 	return db;
 }
 
@@ -137,13 +148,14 @@ function rowToJob(row: Record<string, unknown>): Job {
 		result: row.result == null ? null : String(row.result),
 		error: row.error == null ? null : String(row.error),
 		sessionId: row.session_id == null ? null : String(row.session_id),
+		resumeSessionId: row.resume_session_id == null ? null : String(row.resume_session_id),
 		callbackToken: String(row.callback_token),
 		createdAt: String(row.created_at),
 		finishedAt: row.finished_at == null ? null : String(row.finished_at),
 	};
 }
 
-export function insertJob(agent: string, input: string): Job {
+export function insertJob(agent: string, input: string, resumeSessionId?: string): Job {
 	const job: Job = {
 		id: crypto.randomUUID(),
 		agent,
@@ -152,13 +164,16 @@ export function insertJob(agent: string, input: string): Job {
 		result: null,
 		error: null,
 		sessionId: null,
+		resumeSessionId: resumeSessionId ?? null,
 		callbackToken: crypto.randomBytes(24).toString("hex"),
 		createdAt: new Date().toISOString(),
 		finishedAt: null,
 	};
 	open()
-		.prepare("INSERT INTO jobs (id, agent, input, status, callback_token, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-		.run(job.id, job.agent, job.input, job.status, job.callbackToken, job.createdAt);
+		.prepare(
+			"INSERT INTO jobs (id, agent, input, status, resume_session_id, callback_token, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		)
+		.run(job.id, job.agent, job.input, job.status, job.resumeSessionId, job.callbackToken, job.createdAt);
 	return job;
 }
 
