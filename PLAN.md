@@ -1,193 +1,194 @@
-# AgentMesh — Plan de implementación
+# AgentMesh — Implementation plan
 
-Fecha: 2026-07-08
-Estado: **plan aprobable, sin implementar**
+Date: 2026-07-08
+Status: **phase 1 implemented** (shipped 2026-07-08; kept as the original implementation plan)
 
-> Objetivo de esta etapa: pasar del concept paper (`index.html`, fase 0) a la **fase 1 real**:
-> algo simple, seguro, con **un loop completo de tarea** (enviar tarea → agente la ejecuta →
-> resultado visible), y una **interfaz simple pero funcional** donde publicar agentes para que
-> otros los usen. Las fases de orquestación multi-nodo y ledger/pagos quedan para después, igual
-> que dice el paper.
+> Goal of this stage: go from the concept paper (`index.html`, phase 0) to a **real phase 1**:
+> something simple, secure, with at least **one complete task loop** (submit task → agent runs
+> it → result visible), and a **simple but functional interface** where agents are published so
+> others can use them. Multi-node orchestration and ledger/payments stay for later, exactly as
+> the paper says.
 >
-> Alcance decidido: **solo agent-webhook-bridge + Claude Code**. Flowise queda fuera del proyecto.
+> Decided scope: **agent-webhook-bridge + Claude Code only**. Flowise is out of the project.
 
 ---
 
-## 1. Qué ya tenemos (y qué reusamos tal cual)
+## 1. What we already have (and reuse as-is)
 
-| Pieza | Estado | Rol en AgentMesh |
+| Piece | State | Role in AgentMesh |
 |---|---|---|
-| **agent-webhook-bridge (awb)** | Funcionando (broker + spawn `claude -p`/`--resume`, secretos/HMAC, SQLite, serialización por workdir) | Es el "bridge" del paper: la forma de exponer un agente Claude Code local como endpoint HTTP. **No se reescribe nada**; solo se le agrega un callback de resultado (ver §4.2). |
-| **agentmesh/index.html** | Concept paper | La visión. Este plan implementa su "Phase 1 — single-operator bridge". |
+| **agent-webhook-bridge (awb)** | Working (broker + `claude -p`/`--resume` spawn, secrets/HMAC, SQLite, per-workdir serialization) | It's the paper's "bridge": the way to expose a local Claude Code agent as an HTTP endpoint. **Nothing gets rewritten**; it only gains a result callback (see §4.2). |
+| **agentmesh/index.html** | Concept paper | The vision. This plan implements its "Phase 1 — single-operator bridge". |
 
-Dato técnico que condiciona el diseño (verificado en `broker/dispatch.ts` y `server.ts` de awb):
-el `POST /hook/:name` responde `{ok:true}` al instante y el spawn de Claude corre en background;
-el resultado solo queda en `~/.agent-webhook-bridge/logs/` y en el estado de SQLite. **Un job es
-asíncrono por naturaleza** → el loop se cierra con un callback HTTP al terminar el run (§4.2).
+Technical fact that shapes the design (verified in awb's `broker/dispatch.ts` and `server.ts`):
+`POST /hook/:name` answers `{ok:true}` immediately and the Claude spawn runs in the background;
+the result only lands in `~/.agent-webhook-bridge/logs/` and in SQLite's delivery state. **A job
+is asynchronous by nature** → the loop closes with an HTTP callback when the run finishes (§4.2).
 
-## 2. Arquitectura de la fase 1
+## 2. Phase-1 architecture
 
 ```
                        ┌────────────────────────────────────┐
-   usuario/requester   │  agentmesh-hub  (nuevo, ~600 loc)  │
-   (browser o curl)    │                                    │
-        │              │  UI HTML simple  +  API REST       │
-        ├── ver agentes│  ┌──────────────────────────────┐  │
-        ├── enviar job │  │ registry de agentes (SQLite) │  │
-        └── ver result │  │ cola de jobs      (SQLite)   │  │
+   user/requester      │  agentmesh-hub  (new, ~600 loc)    │
+   (browser or curl)   │                                    │
+        │              │  simple HTML UI  +  REST API       │
+        ├── see agents │  ┌──────────────────────────────┐  │
+        ├── submit job │  │ agent registry (SQLite)      │  │
+        └── see result │  │ job queue      (SQLite)      │  │
                        │  └──────────────┬───────────────┘  │
                        └─────────────────┼──────────────────┘
                                          │
                                          │ POST /hook/<name>
                                          │ body: { jobId, input, callbackUrl }
                                          ▼
-                              broker awb ──▶ spawn claude -p (workdir sandbox)
+                              awb broker ──▶ spawn claude -p (sandbox workdir)
                                                     │
-                                                    │ al terminar:
+                                                    │ when done:
                                                     ▼
                                         POST {callbackUrl}
-                                        (callback nuevo en awb)
+                                        (new callback in awb)
                                                     │
-                       job "done" con resultado ◀───┘
-                       (la UI lo ve por polling)
+                       job "done" with result ◀────┘
+                       (the UI sees it by polling)
 ```
 
-- **agentmesh-hub**: proyecto nuevo en `agentmesh/hub/`. Mismo stack que awb para no sumar
-  dependencias: **Node 24, TypeScript ejecutado directo, `node:sqlite`, cero build, cero
-  framework**. Un solo proceso que sirve la API y la UI.
-- **Agente** = una fila del registry: `{ id, name, description, hookUrl, secret, owner, tags,
-  enabled }` — cada agente es un hook de awb (local ahora, remoto vía túnel en fase 2). Los
-  secretos se guardan en el hub y **nunca** se muestran en la UI ni en la API pública.
+- **agentmesh-hub**: new project in `agentmesh/hub/`. Same stack as awb to add zero
+  dependencies: **Node 24, TypeScript executed directly, `node:sqlite`, zero build, zero
+  framework**. One process serving both the API and the UI.
+- **Agent** = a registry row: `{ id, name, description, hookUrl, secret, owner, tags,
+  enabled }` — every agent is an awb hook (local now, remote via tunnel in phase 2). Secrets
+  are stored in the hub and **never** shown in the UI or the public API.
 - **Job** = `{ id, agentId, input, status: pending|running|done|failed, result, created_at,
   finished_at }`.
 
-## 3. El loop completo de tarea (criterio de éxito de la fase 1)
+## 3. The complete task loop (phase-1 success criterion)
 
-1. En la UI elijo el agente "claude-worker" y escribo la tarea (ej.: *"analizá este texto y
-   generá un informe en markdown"*).
-2. Hub crea el job (`pending`) y hace `POST http://127.0.0.1:8890/hook/agentmesh-worker` con el
-   secret del hook, body `{ jobId, input, callbackUrl }` → job `running`.
-3. awb spawnea `claude -p` en el **workdir sandbox** (ver §5) con un prompt-template que enmarca
-   la tarea y pide terminar el turno con el resultado final.
-4. Al terminar el proceso, el spawn-runner de awb hace `POST {callbackUrl}` con el `result` del
-   JSON de Claude → hub marca el job `done` (o `failed` si exit ≠ 0 / timeout).
-5. La UI (polling cada 2s sobre `GET /jobs/:id`) muestra el resultado.
+1. In the UI I pick the "claude-worker" agent and type the task (e.g. *"analyze this text and
+   produce a markdown report"*).
+2. The hub creates the job (`pending`) and POSTs to `http://127.0.0.1:8890/hook/agentmesh-worker`
+   with the hook's secret, body `{ jobId, input, callbackUrl }` → job `running`.
+3. awb spawns `claude -p` in the **sandbox workdir** (see §5) with a prompt template that frames
+   the task and asks for the final result as the turn's answer.
+4. When the process finishes, awb's spawn-runner POSTs `{callbackUrl}` with the `result` from
+   Claude's JSON → the hub marks the job `done` (or `failed` on non-zero exit / timeout).
+5. The UI (polling `GET /jobs/:id` every 2s) shows the result.
 
-Cuando este loop funciona de punta a punta desde el browser, la fase 1 está cumplida.
+When this loop works end to end from the browser, phase 1 is done.
 
-## 4. Trabajo a realizar
+## 4. Work to do
 
-### 4.1 `agentmesh/hub/` (nuevo)
+### 4.1 `agentmesh/hub/` (new)
 
 ```
 agentmesh/
-├── index.html          (concept paper, no se toca)
-├── PLAN.md             (este documento)
+├── index.html          (concept paper, untouched)
+├── PLAN.md             (this document)
 └── hub/
-    ├── server.ts       HTTP: API + estáticos de la UI
+    ├── server.ts       HTTP: API + UI statics
     ├── db.ts           SQLite: agents + jobs
-    ├── runner.ts       despacho al hook de awb + timeout + token de callback
-    ├── cli.ts          `mesh add-agent`, `mesh list`, `mesh submit` (para probar sin UI)
-    └── ui/index.html   la interfaz (vanilla, misma estética del paper)
+    ├── runner.ts       dispatch to the awb hook + timeout + callback token
+    ├── cli.ts          `mesh add-agent`, `mesh list`, `mesh submit` (testing without the UI)
+    └── ui/index.html   the interface (vanilla, same aesthetic as the paper)
 ```
 
-**API mínima:**
+**Minimal API:**
 
-| Endpoint | Qué hace |
+| Endpoint | What it does |
 |---|---|
-| `GET /api/agents` | Lista pública de agentes (sin secretos). |
-| `POST /api/agents` | Registra un agente (requiere admin token del hub). |
-| `POST /api/jobs` | `{ agentId, input }` → crea el job y lo despacha al hook del agente. |
-| `GET /api/jobs/:id` | Estado + resultado (la UI hace polling de esto). |
-| `POST /api/jobs/:id/result` | Callback que usa awb; autenticado con un token por job. |
-| `GET /` | La UI. |
+| `GET /api/agents` | Public agent list (no secrets). |
+| `POST /api/agents` | Registers an agent (requires the hub's admin token). |
+| `POST /api/jobs` | `{ agentId, input }` → creates the job and dispatches it to the agent's hook. |
+| `GET /api/jobs/:id` | Status + result (the UI polls this). |
+| `POST /api/jobs/:id/result` | Callback used by awb; authenticated with a per-job token. |
+| `GET /` | The UI. |
 
-**UI (una sola página, sin framework):** tres bloques — *Agentes disponibles* (cards con nombre,
-descripción, owner, estado), *Enviar tarea* (select de agente + textarea + botón), *Mis jobs*
-(tabla con estado en vivo y resultado expandible). Reusar las variables CSS del concept paper
-para que se vea de la misma familia.
+**UI (one page, no framework):** three blocks — *Available agents* (cards with name,
+description, owner, status), *Send a task* (agent select + textarea + button), *Jobs* (table
+with live status and expandable result). Reuse the concept paper's CSS variables so it reads as
+the same family.
 
-### 4.2 Cambio mínimo en awb: callback de resultado
+### 4.2 Minimal change in awb: result callback
 
-Único cambio fuera del hub (~25 líneas):
+The only change outside the hub (~25 lines):
 
-- Si el JSON del evento entrante trae `callbackUrl`, el spawn-runner la usa al terminar el run.
-  **Decisión: leerla del body y no como opción del hook** — así un mismo hook sirve para
-  cualquier hub/caller y awb no queda acoplado a AgentMesh.
-- En `adapters/spawn-runner/claude.ts`, al terminar: `POST callbackUrl` con
-  `{ ok, result, session_id, exitCode }` (el `result` ya está en el JSON que devuelve
-  `--output-format json`). Con un retry simple y sin romper nada si el callback falla
-  (el log sigue siendo la fuente de verdad).
-- Restricción de seguridad: solo aceptar `callbackUrl` hacia `127.0.0.1` mientras estemos en
-  fase local (evita que un caller use a awb como proxy para pegarle a otras URLs).
+- If the incoming event's JSON carries a `callbackUrl`, the spawn-runner uses it when the run
+  finishes. **Decision: read it from the body, not as a hook option** — one hook then serves any
+  hub/caller and awb stays decoupled from AgentMesh.
+- In `adapters/spawn-runner/claude.ts`, on finish: `POST callbackUrl` with
+  `{ ok, result, session_id, exitCode }` (the `result` is already in the JSON that
+  `--output-format json` returns). One simple retry, and nothing breaks if the callback fails
+  (the log remains the source of truth).
+- Security restriction: only accept `callbackUrl` pointing at `127.0.0.1` while we're in the
+  local phase (prevents a caller from using awb as a proxy against other URLs).
 
-### 4.3 Registro del agente de demo
+### 4.3 Registering the demo agent
 
 ```bash
-# 1. hook de awb dedicado, con workdir sandbox
+# 1. dedicated awb hook, sandbox workdir
 awb add agentmesh-worker --trigger \
   --workdir ~/agentmesh-sandbox \
-  --prompt-template 'Sos un agente de AgentMesh. Tarea recibida:\n\n{{payload}}\n\nRealizá la tarea y respondé con el resultado final.'
+  --prompt-template 'You are an AgentMesh agent. Incoming task:\n\n{{payload}}\n\nDo the task and answer with the final result.'
 
-# 2. registrarlo en el hub
+# 2. register it in the hub
 mesh add-agent claude-worker \
   --hook-url http://127.0.0.1:8890/hook/agentmesh-worker \
-  --secret <el que devolvió awb add> \
-  --description "Agente Claude Code de propósito general (análisis, redacción, código)"
+  --secret <the one awb add returned> \
+  --description "General-purpose Claude Code agent (analysis, writing, code)"
 ```
 
-## 5. Seguridad de la fase 1 (simple pero de verdad)
+## 5. Phase-1 security (simple but real)
 
-1. **Todo en 127.0.0.1**: hub y awb. Nada escucha en la red en esta fase.
-2. **Workdir sandbox dedicado** (`~/agentmesh-sandbox`): el hook de AgentMesh **nunca** apunta a
-   un repo real. Sin `--permission-mode` al principio (Claude responde pero no escribe); si un
-   caso de uso necesita escribir archivos, `acceptEdits` **solo** en ese sandbox.
-3. **El input del job es input no confiable** (es la premisa del paper): el prompt-template lo
-   enmarca como tarea, y el sandbox + sin permisos limita el daño de un prompt hostil. La
-   contención Docker completa es fase 2.
-4. **Secretos**: el secret de cada hook vive solo en la DB del hub; la API pública jamás lo
-   devuelve. Callback autenticado con token efímero por job. `callbackUrl` restringida a
-   localhost en esta fase.
-5. **Límites**: timeout por job (ej. 5 min → `failed`), tamaño máximo de input, y la
-   serialización por workdir que awb ya tiene evita spawns concurrentes.
+1. **Everything on 127.0.0.1**: hub and awb. Nothing listens on the network in this phase.
+2. **Dedicated sandbox workdir** (`~/agentmesh-sandbox`): the AgentMesh hook **never** points at
+   a real repo. No `--permission-mode` at first (Claude answers but doesn't write); if a use
+   case needs file writes, `acceptEdits` **only** inside that sandbox.
+3. **Job input is untrusted input** (the paper's premise): the prompt template frames it as a
+   task, and the sandbox + no permissions bound the damage of a hostile prompt. Full Docker
+   containment is phase 2.
+4. **Secrets**: each hook's secret lives only in the hub's DB; the public API never returns it.
+   Callback authenticated with an ephemeral per-job token. `callbackUrl` restricted to localhost
+   in this phase.
+5. **Limits**: per-job timeout (e.g. 5 min → `failed`), max input size, and awb's existing
+   per-workdir serialization prevents concurrent spawns.
 
-## 6. Fase 2 — Compartir agentes con otros (después del loop)
+## 6. Phase 2 — Sharing agents with others (after the loop)
 
-En orden, cada paso publicable por separado:
+In order, each step shippable on its own:
 
-1. **Túnel**: exponer el hub con `cloudflared tunnel` (HTTPS gratis, sin abrir puertos). La UI ya
-   existe, solo cambia la URL. API keys de usuario para `POST /api/jobs` (que enviar tareas no
-   sea anónimo) y rate-limit básico.
-2. **Nodos remotos**: otro operador corre awb + túnel en su máquina y registra su agente en tu
-   hub con la URL pública de su hook (y ahí se levanta la restricción de `callbackUrl` a
-   localhost: pasa a ser la URL pública del hub). El hub pasa a ser el "orchestrator mínimo" del
-   paper: el registry ya distingue qué nodo está detrás de cada agente. Health-check (`ping`
-   periódico) para marcar agentes online/offline en la UI.
-3. **Docker sandbox**: empaquetar el nodo (awb + claude autenticado + sandbox) en un container,
-   cumpliendo la promesa de aislamiento del paper.
+1. **Tunnel**: expose the hub with `cloudflared tunnel` (free HTTPS, no open ports). The UI
+   already exists, only the URL changes. Per-user API keys for `POST /api/jobs` (so submitting
+   isn't anonymous) and basic rate limiting.
+2. **Remote nodes**: another operator runs awb + a tunnel on their machine and registers their
+   agent in your hub with their hook's public URL (and the localhost `callbackUrl` restriction
+   is lifted: it becomes the hub's public URL). The hub becomes the paper's "minimal
+   orchestrator": the registry already knows which node is behind each agent. Health checks
+   (periodic ping) to mark agents online/offline in the UI.
+3. **Docker sandbox**: package the node (awb + authenticated claude + sandbox) into a container,
+   delivering the paper's isolation promise.
 
-## 7. Fases 3–4 (sin cambios respecto al paper)
+## 7. Phases 3-4 (unchanged from the paper)
 
-- **Fase 3 — orquestación**: routing por capacidad/tags, retry en otro nodo, split de jobs.
-- **Fase 4 — ledger/points**: recién cuando haya más de un operador real.
+- **Phase 3 — orchestration**: routing by capability/tags, retry on another node, job splitting.
+- **Phase 4 — ledger/points**: only once there's more than one real operator.
 
-## 8. Orden de ejecución sugerido (fase 1)
+## 8. Suggested execution order (phase 1)
 
-| # | Entregable | Verificación |
+| # | Deliverable | Verification |
 |---|---|---|
-| 1 | Callback en awb (§4.2) | `curl` al hook con `callbackUrl` apuntando a un `nc`/server de prueba → llega el resultado del run |
-| 2 | Hub: DB + API + runner + CLI | `mesh submit` cierra el loop completo por terminal |
-| 3 | UI servida por el hub | Loop completo desde el browser |
-| 4 | Timeouts, token por job, pulido UI | Job que expira queda `failed`; secretos nunca visibles |
+| 1 | Callback in awb (§4.2) | `curl` to the hook with a `callbackUrl` pointing at a test server → the run's result arrives |
+| 2 | Hub: DB + API + runner + CLI | `mesh submit` closes the full loop from the terminal |
+| 3 | UI served by the hub | Full loop from the browser |
+| 4 | Timeouts, per-job token, UI polish | An expired job ends `failed`; secrets never visible |
 
-Estimación honesta: el hub es del mismo tamaño que el broker de awb (~600 líneas); los pasos 1–2
-son un día de trabajo tranquilo, 3–4 otro más.
+Honest estimate: the hub is about the size of awb's broker (~600 lines); steps 1-2 are a calm
+day of work, 3-4 one more.
 
-## 9. Decisiones tomadas por defecto (avisar si querés otra cosa)
+## 9. Default decisions taken (say so if you want otherwise)
 
-- **Sin Flowise**: el proyecto usa exclusivamente awb + Claude Code como tipo de agente. Si algún
-  día se suma otro runtime, el registry ya lo soporta (es solo otro `hookUrl`).
-- **Stack del hub**: Node 24 + `node:sqlite` + TS directo, igual que awb (cero fricción, cero build).
-- **Callback en el body del evento** y no como opción del hook (§4.2), para no acoplar awb al hub.
-- **Compartir = fase 2 con túnel**; la fase 1 es 100% local para validar el loop sin exponer nada.
-- **UI vanilla** (sin React/framework): una página, estética del concept paper.
+- **No Flowise**: the project uses awb + Claude Code exclusively as the agent type. If another
+  runtime ever joins, the registry already supports it (it's just another `hookUrl`).
+- **Hub stack**: Node 24 + `node:sqlite` + direct TS, same as awb (zero friction, zero build).
+- **Callback in the event body**, not as a hook option (§4.2), to keep awb decoupled from the hub.
+- **Sharing = phase 2 with a tunnel**; phase 1 is 100% local to validate the loop without
+  exposing anything.
+- **Vanilla UI** (no React/framework): one page, the concept paper's aesthetic.

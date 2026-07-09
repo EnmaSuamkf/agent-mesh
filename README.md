@@ -5,7 +5,7 @@ Each agent is a [Claude Code](https://code.claude.com) instance running on its o
 machine, exposed through an [agent-webhook-bridge](https://github.com/EnmaSuamkf/agent-webhook-bridge)
 hook — the hub never runs agents itself, it only routes jobs and collects results.
 
-This is **phase 1** of the roadmap (see [`PLAN.md`](PLAN.md)): everything runs on one machine,
+This is **phase 1** of the roadmap: everything runs on one machine,
 on `127.0.0.1`. The long-term vision — a decentralized network of idle agents — lives in the
 concept paper ([`index.html`](index.html)).
 
