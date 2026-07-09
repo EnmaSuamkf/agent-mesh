@@ -284,7 +284,7 @@ Workdir:    /home/you/agentmesh-sandbox</code></pre>
         <h3>Publishing from the UI (no terminal)</h3>
         <p>
           Both steps can also be done from the web UI: open
-          <a href="http://127.0.0.1:8892/#publicar">http://127.0.0.1:8892/#publicar</a>, paste the
+          <a href="http://127.0.0.1:8892/#publish">http://127.0.0.1:8892/#publish</a>, paste the
           admin token (printed at hub startup, also in <code>~/.agentmesh-hub/config.json</code>)
           and fill the form. Two modes:
         </p>
@@ -305,7 +305,7 @@ Workdir:    /home/you/agentmesh-sandbox</code></pre>
         </div>
         <h3>Advanced options (create-hook mode)</h3>
         <p>
-          The form's <em>Configuración avanzada</em> exposes two extra hook settings:
+          The form's <em>Advanced settings</em> exposes two extra hook settings:
         </p>
         <ul>
           <li><strong>Custom hook secret</strong> — leave empty to autogenerate one (recommended).</li>
@@ -338,7 +338,7 @@ Workdir:    /home/you/agentmesh-sandbox</code></pre>
         <h2>Using an agent</h2>
         <p>Three equivalent ways to send a task:</p>
         <ul>
-          <li><strong>Web UI</strong> (<a href="http://127.0.0.1:8892">http://127.0.0.1:8892</a>): pick the agent, type the task, hit <em>Enviar</em>. The job shows up in the table as <code>pending</code> → <code>running</code> → <code>done</code>, and expanding the row shows the full task + result. The page polls every 2.5s. The <em>Agente</em>, <em>Estado</em>, <em>Sesión</em> and <em>Creado</em> headers are clickable to sort — sorting by <em>Sesión</em> groups the jobs of one conversation together; clicking again flips the direction (newest-first by <em>Creado</em> is the default).</li>
+          <li><strong>Web UI</strong> (<a href="http://127.0.0.1:8892">http://127.0.0.1:8892</a>): pick the agent, type the task, hit <em>Send</em>. The job shows up in the table as <code>pending</code> → <code>running</code> → <code>done</code>, and expanding the row shows the full task + result. The page polls every 2.5s. The <em>Agent</em>, <em>Status</em>, <em>Session</em> and <em>Created</em> headers are clickable to sort — sorting by <em>Session</em> groups the jobs of one conversation together; clicking again flips the direction (newest-first by <em>Created</em> is the default).</li>
           <li><strong>CLI</strong>: submits and waits for the result in the terminal:
             <pre><code>mesh submit traductor "la red distribuye el trabajo entre nodos"</code></pre>
           </li>
@@ -360,7 +360,7 @@ curl -s http://127.0.0.1:8892/api/jobs/&lt;id&gt;</code></pre>
           "New session vs. resume" section of agent-webhook-bridge's docs). Three equivalent ways:
         </p>
         <ul>
-          <li><strong>UI</strong>: the jobs table has a <em>Sesión</em> column — click a job's session chip (an <code>↻</code> prefix marks runs that were themselves continuations) and the submit form is pre-filled with the agent and session id; same for the <em>Continuar esta conversación</em> button inside the expanded job. Jobs with no recorded session (failed runs, or runs older than the result callback) show <code>stateless</code> and can't be continued. The field is also editable by hand under <em>Continuar una sesión anterior</em>.</li>
+          <li><strong>UI</strong>: the jobs table has a <em>Session</em> column — click a job's session chip (an <code>↻</code> prefix marks runs that were themselves continuations) and the submit form is pre-filled with the agent and session id; same for the <em>Continue this conversation</em> button inside the expanded job. Jobs with no recorded session (failed runs, or runs older than the result callback) show <code>stateless</code> and can't be continued. The field is also editable by hand under <em>Continue a previous session</em>.</li>
           <li><strong>CLI</strong>: <code>mesh submit traductor --session-id &lt;id&gt; "…"</code> — the id to continue from is printed with every finished job.</li>
           <li><strong>API</strong>: add <code>"sessionId": "&lt;id&gt;"</code> to the <code>POST /api/jobs</code> body.</li>
         </ul>

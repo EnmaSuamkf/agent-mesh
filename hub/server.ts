@@ -186,9 +186,9 @@ export function createServer(cfg: HubConfig, log: Logger): http.Server {
 					let warning: string | undefined;
 					const info = inspectLocalHook(hookUrl);
 					if (info.local && info.found === false) {
-						warning = `no existe un hook '${info.name}' en el awb local — los jobs van a fallar hasta que lo crees`;
+						warning = `no hook named '${info.name}' exists in the local awb — jobs will fail until you create it`;
 					} else if (info.local && info.found && !info.hasWorkdir) {
-						warning = `el hook '${info.name}' no tiene workdir: corre en la carpeta del broker y sus sesiones de Claude pueden perderse entre reinicios — recrealo con --workdir`;
+						warning = `hook '${info.name}' has no workdir: it runs in the broker's folder and its Claude sessions can be lost across restarts — recreate it with --workdir`;
 					}
 					log(`agent '${name}' registered${warning ? ` (warning: ${warning})` : ""}`);
 					sendJson(res, 200, { agent: publicAgent(agent), ...(warning ? { warning } : {}) });

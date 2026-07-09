@@ -124,10 +124,10 @@ async function main(): Promise<void> {
 		console.log(describeAgent(agent));
 		const info = inspectLocalHook(hookUrl);
 		if (info.local && info.found === false) {
-			console.warn(`\n⚠ No existe un hook '${info.name}' en el awb local — los jobs van a fallar hasta que lo crees.`);
+			console.warn(`\n⚠ No hook named '${info.name}' exists in the local awb — jobs will fail until you create it.`);
 		} else if (info.local && info.found && !info.hasWorkdir) {
 			console.warn(
-				`\n⚠ El hook '${info.name}' no tiene workdir: corre en la carpeta del broker y sus sesiones de Claude pueden perderse entre reinicios. Recrealo con --workdir.`,
+				`\n⚠ Hook '${info.name}' has no workdir: it runs in the broker's folder and its Claude sessions can be lost across restarts. Recreate it with --workdir.`,
 			);
 		}
 		return;

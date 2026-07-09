@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -326,48 +326,48 @@
     <div class="shell">
       <header class="hero">
         <div class="eyebrow">AgentMesh · hub</div>
-        <h1>Agentes compartidos</h1>
+        <h1>Shared agents</h1>
         <p class="tagline">
-          Elegí un agente publicado en la mesh, mandale una tarea y mirá el resultado cuando
-          termina. Cada agente corre en la máquina de su operador, detrás de su propio bridge.
+          Pick an agent published on the mesh, send it a task and watch the result when it
+          finishes. Each agent runs on its operator's own machine, behind its own bridge.
         </p>
       </header>
 
       <section aria-labelledby="publish-h">
-        <h2 id="publish-h">Publicar agente</h2>
+        <h2 id="publish-h">Publish agent</h2>
         <details class="publish">
-          <summary>Publicar un agente nuevo en la mesh (operadores — requiere admin token)</summary>
+          <summary>Publish a new agent on the mesh (operators — requires the admin token)</summary>
           <form id="publish-form">
             <div>
               <label for="pub-token">Admin token</label>
               <input type="password" id="pub-token" required autocomplete="off"
-                placeholder="El token que imprime el hub al arrancar (config.json)" />
+                placeholder="The token the hub prints at startup (config.json)" />
             </div>
             <div class="two-col">
               <div>
-                <label for="pub-name">Nombre</label>
+                <label for="pub-name">Name</label>
                 <input type="text" id="pub-name" required pattern="[A-Za-z0-9._-]+"
-                  placeholder="ej: revisor-de-codigo" />
+                  placeholder="e.g. code-reviewer" />
               </div>
               <div>
                 <label for="pub-owner">Owner</label>
-                <input type="text" id="pub-owner" placeholder="quién lo opera" />
+                <input type="text" id="pub-owner" placeholder="who operates it" />
               </div>
             </div>
             <div>
-              <label for="pub-description">Descripción</label>
+              <label for="pub-description">Description</label>
               <input type="text" id="pub-description"
-                placeholder="Qué hace — es lo que ven los demás para decidir usarlo" />
+                placeholder="What it does — this is what others see to decide whether to use it" />
             </div>
             <div>
               <label for="pub-tags">Tags</label>
-              <input type="text" id="pub-tags" placeholder="separados por coma: codigo, revision" />
+              <input type="text" id="pub-tags" placeholder="comma-separated: code, review" />
             </div>
-            <div class="mode-row" role="radiogroup" aria-label="Origen del hook">
+            <div class="mode-row" role="radiogroup" aria-label="Hook source">
               <label><input type="radio" name="pub-mode" value="new" checked />
-                Crear el hook en awb automáticamente</label>
+                Create the awb hook automatically</label>
               <label><input type="radio" name="pub-mode" value="existing" />
-                Ya tengo un hook de awb</label>
+                I already have an awb hook</label>
             </div>
             <div id="pub-new-fields">
               <div>
@@ -377,34 +377,34 @@
               <div>
                 <label for="pub-template">Prompt template</label>
                 <textarea id="pub-template"
-                  placeholder="La personalidad del agente. {{payload}} se reemplaza por la tarea. Vacío = template genérico de AgentMesh."></textarea>
-                <p class="field-hint">Tiene que incluir {{payload}} — ahí aterriza la tarea que envía el usuario.</p>
+                  placeholder="The agent's personality. {{payload}} is replaced with the task. Empty = AgentMesh's generic template."></textarea>
+                <p class="field-hint">It must include {{payload}} — that's where the submitted task lands.</p>
               </div>
               <details class="advanced">
-                <summary>Configuración avanzada</summary>
+                <summary>Advanced settings</summary>
                 <div>
                   <div>
-                    <label for="pub-hook-secret">Secret del hook</label>
+                    <label for="pub-hook-secret">Hook secret</label>
                     <input type="text" id="pub-hook-secret" autocomplete="off"
-                      placeholder="vacío = se genera uno aleatorio (recomendado)" />
+                      placeholder="empty = a random one is generated (recommended)" />
                   </div>
                   <div>
                     <label for="pub-permission">Permission mode</label>
                     <select id="pub-permission">
-                      <option value="">sin permisos — el agente responde pero no escribe (default)</option>
-                      <option value="acceptEdits">acceptEdits — puede crear/editar archivos en su workdir</option>
-                      <option value="plan">plan — solo planifica, no ejecuta</option>
+                      <option value="">no permissions — the agent answers but can't write (default)</option>
+                      <option value="acceptEdits">acceptEdits — can create/edit files in its workdir</option>
+                      <option value="plan">plan — plans only, doesn't execute</option>
                       <option value="auto">auto</option>
                       <option value="manual">manual</option>
-                      <option value="dontAsk">dontAsk — no autoriza escrituras pese al nombre</option>
+                      <option value="dontAsk">dontAsk — doesn't authorize writes despite the name</option>
                     </select>
                     <p class="field-hint">
-                      Se pasa como --permission-mode de claude. Cuidado con acceptEdits: cualquiera
-                      que envíe una tarea puede hacer que el agente escriba en su workdir — usalo
-                      solo con workdir sandbox. bypassPermissions no se ofrece acá a propósito
-                      (solo por CLI). --visible y HMAC tampoco: el primero rompe el callback de
-                      resultados y el segundo llega en fase 2 — para esos casos creá el hook con
-                      awb add y usá el modo "Ya tengo un hook".
+                      Passed through as claude's --permission-mode. Careful with acceptEdits:
+                      anyone who submits a task can make the agent write in its workdir — only use
+                      it with a sandbox workdir. bypassPermissions isn't offered here on purpose
+                      (CLI only). Neither are --visible and HMAC: the first breaks the result
+                      callback and the second arrives in phase 2 — for those, create the hook with
+                      awb add and use the "I already have a hook" mode.
                     </p>
                   </div>
                 </div>
@@ -413,16 +413,16 @@
             <div id="pub-existing-fields" hidden>
               <div>
                 <label for="pub-hook-url">Hook URL</label>
-                <input type="text" id="pub-hook-url" placeholder="http://127.0.0.1:8890/hook/mi-hook" />
+                <input type="text" id="pub-hook-url" placeholder="http://127.0.0.1:8890/hook/my-hook" />
               </div>
               <div>
                 <label for="pub-secret">X-Webhook-Secret</label>
                 <input type="password" id="pub-secret" autocomplete="off"
-                  placeholder="el secret que devolvió awb add" />
+                  placeholder="the secret awb add returned" />
               </div>
             </div>
             <div class="submit-row">
-              <button type="submit" id="pub-btn">Publicar</button>
+              <button type="submit" id="pub-btn">Publish</button>
               <p class="form-msg" id="pub-msg"></p>
             </div>
           </form>
@@ -430,39 +430,40 @@
       </section>
 
       <section aria-labelledby="agents-h">
-        <h2 id="agents-h">Agentes disponibles</h2>
-        <div class="agents" id="agents"><p class="empty">Cargando…</p></div>
+        <h2 id="agents-h">Available agents</h2>
+        <div class="agents" id="agents"><p class="empty">Loading…</p></div>
         <p class="agents-msg" id="agents-msg"></p>
       </section>
 
       <section aria-labelledby="submit-h">
-        <h2 id="submit-h">Enviar tarea</h2>
+        <h2 id="submit-h">Send a task</h2>
         <form id="submit-form">
           <div>
-            <label for="agent-select">Agente</label>
+            <label for="agent-select">Agent</label>
             <select id="agent-select" required></select>
           </div>
           <div>
-            <label for="input-text">Tarea</label>
+            <label for="input-text">Task</label>
             <textarea id="input-text" required
-              placeholder="Ej.: Analizá este texto y resumilo en tres puntos…"></textarea>
+              placeholder="e.g. Analyze this text and summarize it in three points…"></textarea>
           </div>
           <details class="advanced" id="resume-details">
-            <summary>Continuar una sesión anterior</summary>
+            <summary>Continue a previous session</summary>
             <div>
               <div>
                 <label for="session-id">Session ID</label>
                 <input type="text" id="session-id" autocomplete="off"
-                  placeholder="vacío = sesión nueva. El id aparece en cada job terminado." />
+                  placeholder="empty = fresh session. The id shows on every finished job." />
                 <p class="field-hint">
-                  Con un session id, el agente retoma esa conversación con todo su contexto en vez
-                  de empezar de cero. El botón "Continuar" de un job terminado lo completa solo.
+                  With a session id, the agent picks that conversation back up with all its
+                  context instead of starting from scratch. The "Continue" button on a finished
+                  job fills it in for you.
                 </p>
               </div>
             </div>
           </details>
           <div class="submit-row">
-            <button type="submit" id="submit-btn">Enviar</button>
+            <button type="submit" id="submit-btn">Send</button>
             <p class="form-msg" id="form-msg"></p>
           </div>
         </form>
@@ -475,21 +476,21 @@
             <thead>
               <tr>
                 <th>Job</th>
-                <th class="sortable" data-sort="agent">Agente</th>
-                <th class="sortable" data-sort="status">Estado</th>
-                <th class="sortable" data-sort="sessionId">Sesión</th>
-                <th class="sortable" data-sort="createdAt">Creado</th>
-                <th>Tarea / resultado</th>
+                <th class="sortable" data-sort="agent">Agent</th>
+                <th class="sortable" data-sort="status">Status</th>
+                <th class="sortable" data-sort="sessionId">Session</th>
+                <th class="sortable" data-sort="createdAt">Created</th>
+                <th>Task / result</th>
               </tr>
             </thead>
-            <tbody id="jobs"><tr><td colspan="6" class="empty">Sin jobs todavía.</td></tr></tbody>
+            <tbody id="jobs"><tr><td colspan="6" class="empty">No jobs yet.</td></tr></tbody>
           </table>
         </div>
       </section>
 
       <footer>
-        <span>AgentMesh hub · fase 1 · local</span>
-        <span id="hub-status">conectando…</span>
+        <span>AgentMesh hub · phase 1 · local</span>
+        <span id="hub-status">connecting…</span>
       </footer>
     </div>
 
@@ -524,8 +525,8 @@
 
         const usable = agents.filter((a) => a.enabled);
         if (usable.length === 0) {
-          grid.appendChild(el("p", "empty", "No hay agentes publicados. Registrá uno con `mesh add-agent`."));
-          select.appendChild(new Option("— sin agentes —", ""));
+          grid.appendChild(el("p", "empty", "No agents published yet. Register one with `mesh add-agent`."));
+          select.appendChild(new Option("— no agents —", ""));
           return;
         }
         for (const agent of usable) {
@@ -534,14 +535,14 @@
           head.appendChild(el("h3", null, agent.name));
           const del = el("button", "del-btn", "×");
           del.type = "button";
-          del.title = `Eliminar '${agent.name}' del registro (admin)`;
+          del.title = `Remove '${agent.name}' from the registry (admin)`;
           del.setAttribute("aria-label", del.title);
           del.addEventListener("click", () => removeAgent(agent.name));
           head.appendChild(del);
           card.appendChild(head);
-          card.appendChild(el("p", null, agent.description || "Sin descripción."));
+          card.appendChild(el("p", null, agent.description || "No description."));
           const meta = el("div", "agent-meta");
-          if (agent.owner) meta.appendChild(el("span", null, `por ${agent.owner}`));
+          if (agent.owner) meta.appendChild(el("span", null, `by ${agent.owner}`));
           for (const tag of agent.tags) meta.appendChild(el("span", "tag", tag));
           card.appendChild(meta);
           grid.appendChild(card);
@@ -590,17 +591,17 @@
 
       function fmtTime(iso) {
         const d = new Date(iso);
-        const hm = d.toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
+        const hm = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
         return d.toDateString() === new Date().toDateString()
           ? hm
-          : `${d.toLocaleDateString("es", { day: "2-digit", month: "2-digit" })} ${hm}`;
+          : `${d.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit" })} ${hm}`;
       }
 
       function renderJobs(jobs) {
         const tbody = $("jobs");
         tbody.replaceChildren();
         if (jobs.length === 0) {
-          const td = el("td", "empty", "Sin jobs todavía.");
+          const td = el("td", "empty", "No jobs yet.");
           td.colSpan = 6;
           tbody.appendChild(el("tr")).appendChild(td);
           return;
@@ -615,13 +616,13 @@
           if (job.sessionId) {
             const chip = el("button", "session-chip", `${job.resumeSessionId ? "↻ " : ""}${job.sessionId.slice(0, 8)}`);
             chip.type = "button";
-            chip.title = `${job.resumeSessionId ? `Continuación de ${job.resumeSessionId.slice(0, 8)}… — c` : "C"}orrió en la sesión ${job.sessionId}. Click para seguir esta conversación.`;
+            chip.title = `${job.resumeSessionId ? `Continuation of ${job.resumeSessionId.slice(0, 8)}… — r` : "R"}an in session ${job.sessionId}. Click to keep this conversation going.`;
             chip.addEventListener("click", () => continueSession(job));
             sessTd.appendChild(chip);
           } else {
             const none = el("span", "session-none",
               job.status === "pending" || job.status === "running" ? "…" : "stateless");
-            none.title = "Sin sesión registrada — este job no se puede continuar.";
+            none.title = "No session recorded — this job can't be continued.";
             sessTd.appendChild(none);
           }
           tr.appendChild(sessTd);
@@ -637,14 +638,14 @@
           const preview = job.input.length > 70 ? `${job.input.slice(0, 70)}…` : job.input;
           details.appendChild(el("summary", null, preview));
           const body = job.status === "failed"
-            ? `⚠ ${job.error || "falló sin detalle"}`
-            : job.result ?? (job.status === "done" ? "(resultado vacío)" : "… trabajando");
-          const resumedNote = job.resumeSessionId ? `\n(continuación de la sesión ${job.resumeSessionId})` : "";
+            ? `⚠ ${job.error || "failed without detail"}`
+            : job.result ?? (job.status === "done" ? "(empty result)" : "… working");
+          const resumedNote = job.resumeSessionId ? `\n(continuation of session ${job.resumeSessionId})` : "";
           const sessionNote = job.sessionId ? `\n\nsession: ${job.sessionId}` : "";
-          const pre = el("pre", null, `Tarea:${resumedNote}\n${job.input}\n\nResultado:\n${body}${sessionNote}`);
+          const pre = el("pre", null, `Task:${resumedNote}\n${job.input}\n\nResult:\n${body}${sessionNote}`);
           details.appendChild(pre);
           if (job.status === "done" && job.sessionId) {
-            const cont = el("button", "resume-btn", "Continuar esta conversación →");
+            const cont = el("button", "resume-btn", "Continue this conversation →");
             cont.type = "button";
             cont.addEventListener("click", () => continueSession(job));
             details.appendChild(cont);
@@ -670,22 +671,22 @@
         const token = (localStorage.getItem("meshAdminToken") || "").trim();
         if (!token) {
           msg.classList.add("error");
-          msg.textContent = "Para eliminar necesitás el admin token: guardalo publicando (o intentando publicar) en el formulario de abajo.";
+          msg.textContent = "Removing needs the admin token: save it by publishing (or trying to) in the form above.";
           return;
         }
-        if (!confirm(`¿Eliminar '${name}' del registro? El hook de awb no se toca (se quita con \`awb rm ${name}\`).`)) return;
+        if (!confirm(`Remove '${name}' from the registry? The awb hook is left untouched (remove it with \`awb rm ${name}\`).`)) return;
         try {
           await api(`/api/agents/${encodeURIComponent(name)}`, {
             method: "DELETE",
             headers: { authorization: `Bearer ${token}` },
           });
-          msg.textContent = `Agente '${name}' eliminado del registro.`;
+          msg.textContent = `Agent '${name}' removed from the registry.`;
           await refresh();
         } catch (err) {
           msg.classList.add("error");
           msg.textContent = err.message === "unauthorized"
-            ? "Admin token inválido — volvé a guardarlo en el formulario de publicar."
-            : `No se pudo eliminar: ${err.message}`;
+            ? "Invalid admin token — save it again in the publish form."
+            : `Could not remove: ${err.message}`;
         }
       }
 
@@ -698,7 +699,7 @@
           $("hub-status").textContent = "hub online";
           $("hub-status").classList.remove("offline");
         } catch {
-          $("hub-status").textContent = "hub sin conexión";
+          $("hub-status").textContent = "hub offline";
           $("hub-status").classList.add("offline");
         }
       }
@@ -713,7 +714,7 @@
         if (!agent || !input) return;
         btn.disabled = true;
         msg.classList.remove("error");
-        msg.textContent = "Enviando…";
+        msg.textContent = "Sending…";
         try {
           const { job } = await api("/api/jobs", {
             method: "POST",
@@ -724,12 +725,12 @@
           $("input-text").value = "";
           $("session-id").value = "";
           msg.textContent = sessionId
-            ? `Job ${job.id.slice(0, 8)} enviado (continúa la sesión ${sessionId.slice(0, 8)}…) — el resultado aparece abajo.`
-            : `Job ${job.id.slice(0, 8)} enviado — el resultado aparece abajo.`;
+            ? `Job ${job.id.slice(0, 8)} sent (continuing session ${sessionId.slice(0, 8)}…) — the result shows up below.`
+            : `Job ${job.id.slice(0, 8)} sent — the result shows up below.`;
           await refresh();
         } catch (err) {
           msg.classList.add("error");
-          msg.textContent = `No se pudo enviar: ${err.message}`;
+          msg.textContent = `Could not submit: ${err.message}`;
         } finally {
           btn.disabled = false;
         }
@@ -740,8 +741,11 @@
       // The admin token is remembered per browser so operators type it once.
       $("pub-token").value = localStorage.getItem("meshAdminToken") || "";
 
-      // Deep link: /#publicar opens the operator form directly.
-      if (location.hash === "#publicar") document.querySelector("details.publish").open = true;
+      // Deep link: /#publish opens the operator form directly (the old
+      // /#publicar keeps working for links already out there).
+      if (location.hash === "#publish" || location.hash === "#publicar") {
+        document.querySelector("details.publish").open = true;
+      }
 
       for (const radio of document.querySelectorAll('input[name="pub-mode"]')) {
         radio.addEventListener("change", () => {
@@ -778,13 +782,13 @@
           payload.secret = $("pub-secret").value;
           if (!payload.hookUrl || !payload.secret) {
             msg.classList.add("error");
-            msg.textContent = "Hook URL y secret son obligatorios en este modo.";
+            msg.textContent = "Hook URL and secret are required in this mode.";
             return;
           }
         }
         btn.disabled = true;
         msg.classList.remove("error", "warn");
-        msg.textContent = "Publicando…";
+        msg.textContent = "Publishing…";
         try {
           const data = await api(path, {
             method: "POST",
@@ -794,9 +798,9 @@
           localStorage.setItem("meshAdminToken", token);
           if (data.warning) {
             msg.classList.add("warn");
-            msg.textContent = `Agente '${data.agent.name}' publicado, pero ojo: ${data.warning}`;
+            msg.textContent = `Agent '${data.agent.name}' published, but heads-up: ${data.warning}`;
           } else {
-            msg.textContent = `Agente '${data.agent.name}' publicado — ya aparece arriba.`;
+            msg.textContent = `Agent '${data.agent.name}' published — it's live above.`;
           }
           $("publish-form").reset();
           $("pub-token").value = token;
@@ -804,8 +808,8 @@
         } catch (err) {
           msg.classList.add("error");
           msg.textContent = err.message === "unauthorized"
-            ? "Admin token inválido."
-            : `No se pudo publicar: ${err.message}`;
+            ? "Invalid admin token."
+            : `Could not publish: ${err.message}`;
         } finally {
           btn.disabled = false;
         }

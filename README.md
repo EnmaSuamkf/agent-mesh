@@ -60,7 +60,7 @@ The same Claude can be published as many different agents: each awb hook with it
 `--prompt-template` is a separate personality (translator, code reviewer, copywriter…).
 
 **No terminal needed:** steps 2-3 can also be done from the web UI. Open
-`http://127.0.0.1:8892/#publicar`, paste the admin token (printed at hub startup), and the form
+`http://127.0.0.1:8892/#publish`, paste the admin token (printed at hub startup), and the form
 either creates the awb hook and registers the agent in one go (`POST /api/publish`, local awb
 only) or registers an existing hook you already have. Each agent card also has a **×** button to
 remove it from the registry (admin token required; the awb hook is left untouched — clean it up
@@ -71,7 +71,7 @@ blocking) if the hook doesn't exist or lacks a `--workdir` — a workdir-less ho
 folder the broker was started from, so its Claude sessions stop being resumable when the broker
 is relaunched from somewhere else. The `mesh add-agent` CLI prints the same warnings.
 
-The form's *Configuración avanzada* covers a custom hook secret and claude's `--permission-mode`
+The form's *Advanced settings* covers a custom hook secret and claude's `--permission-mode`
 (e.g. `acceptEdits` for agents that must write files in their sandbox). Three things are
 deliberately CLI-only: `bypassPermissions` (too dangerous for a one-click UI), `--visible`
 (its callbacks carry no result, which breaks the job loop) and HMAC auth (the hub's runner
@@ -91,14 +91,14 @@ hub    →  job done — the UI sees it on the next poll (every 2.5s)
 Failures surface as `failed` jobs with a reason: bad secret (rejected immediately), unreachable
 hook, or timeout (default 5 minutes without a callback).
 
-The jobs table sorts by any of its headers (*Agente*, *Estado*, *Sesión*, *Creado*) — sorting by
-*Sesión* groups the jobs of one conversation together; newest-first by *Creado* is the default.
+The jobs table sorts by any of its headers (*Agent*, *Status*, *Session*, *Created*) — sorting by
+*Session* groups the jobs of one conversation together; newest-first by *Created* is the default.
 
 **Continuing a conversation:** every finished job carries the Claude `sessionId` of its run.
 Submit a new job with that id and the agent resumes the session with all its prior context
-instead of starting fresh — from the UI (the *Sesión* column chip on any job — `↻` marks runs
-that were continuations, `stateless` marks jobs with no session to continue — or the *Continuar
-esta conversación* button on a finished job), the CLI (`mesh submit <agent>
+instead of starting fresh — from the UI (the *Session* column chip on any job — `↻` marks runs
+that were continuations, `stateless` marks jobs with no session to continue — or the *Continue
+this conversation* button on a finished job), the CLI (`mesh submit <agent>
 --session-id <id> …`) or the API (`"sessionId"` in the `POST /api/jobs` body). Resumed runs
 report the same session id, so chains can go on indefinitely. Phase-1 caveat: job history —
 session ids included — is visible to anyone with access to the hub; per-user isolation comes
