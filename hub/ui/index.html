@@ -295,6 +295,14 @@
         font-size: 0.82rem;
         white-space: nowrap;
       }
+      td.job-task-cell{ width: 100%; max-width: 0; }
+      td.job-task-cell summary{
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      td.job-task-cell summary::before{ content: "▸ "; color: var(--accent); }
+      td.job-task-cell details[open] > summary::before{ content: "▾ "; }
       details pre{
         font-family: var(--mono);
         font-size: 0.8rem;
@@ -314,8 +322,10 @@
         display: flex;
         flex-direction: column;
         gap: 0.75rem;
-        margin-top: 0.75rem;
       }
+      tr.expanded td{ border-bottom: none; }
+      .job-expand-row td{ padding-top: 0; border-bottom: none; }
+      .job-expand-row.job-expand-last td{ border-bottom: 1px solid var(--border); }
       .job-section{
         background: var(--surface-2);
         border: 1px solid var(--border);
@@ -770,17 +780,16 @@
           timeTd.style.cursor = "help";
           tr.appendChild(timeTd);
 
-          const cell = el("td");
+          const cell = el("td", "job-task-cell");
           const details = document.createElement("details");
           if (openJobIds.has(job.id)) details.open = true;
-          details.addEventListener("toggle", () => {
-            if (details.open) openJobIds.add(job.id);
-            else openJobIds.delete(job.id);
-          });
           const preview = job.input.length > 70 ? `${job.input.slice(0, 70)}…` : job.input;
           details.appendChild(el("summary", null, preview));
-          
-          // Create sections container
+          cell.appendChild(details);
+          tr.appendChild(cell);
+          tbody.appendChild(tr);
+
+          // Task + result sections (second row, full width)
           const contentDiv = el("div", "job-details-content");
           
           // Task section
@@ -832,8 +841,16 @@
           resultSection.appendChild(resultTitle);
           resultSection.appendChild(resultContent);
           contentDiv.appendChild(resultSection);
-          
-          // Session section (if exists)
+
+          const detailsTr = el("tr", "job-expand-row");
+          const detailsTd = el("td");
+          detailsTd.colSpan = 7;
+          detailsTd.appendChild(contentDiv);
+          detailsTr.appendChild(detailsTd);
+          tbody.appendChild(detailsTr);
+
+          // Session section (third row, if exists)
+          let sessionTr = null;
           if (job.sessionId) {
             const sessionSection = el("div", "job-section");
             const sessionTitle = el("div", "job-section-title");
@@ -864,13 +881,31 @@
             
             sessionSection.appendChild(sessionTitle);
             sessionSection.appendChild(sessionRow);
-            contentDiv.appendChild(sessionSection);
+
+            sessionTr = el("tr", "job-expand-row");
+            const sessionTd = el("td");
+            sessionTd.colSpan = 7;
+            const sessionDiv = el("div", "job-details-content");
+            sessionDiv.appendChild(sessionSection);
+            sessionTd.appendChild(sessionDiv);
+            sessionTr.appendChild(sessionTd);
+            tbody.appendChild(sessionTr);
           }
-          
-          details.appendChild(contentDiv);
-          cell.appendChild(details);
-          tr.appendChild(cell);
-          tbody.appendChild(tr);
+
+          const lastExpandTr = sessionTr || detailsTr;
+          lastExpandTr.classList.add("job-expand-last");
+          const syncExpand = () => {
+            const open = details.open;
+            detailsTr.hidden = !open;
+            if (sessionTr) sessionTr.hidden = !open;
+            tr.classList.toggle("expanded", open);
+          };
+          details.addEventListener("toggle", () => {
+            if (details.open) openJobIds.add(job.id);
+            else openJobIds.delete(job.id);
+            syncExpand();
+          });
+          syncExpand();
         }
         updateSelectAllCheckbox();
       }
