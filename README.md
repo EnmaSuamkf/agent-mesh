@@ -72,11 +72,15 @@ folder the broker was started from, so its Claude sessions stop being resumable 
 is relaunched from somewhere else. The `mesh add-agent` CLI prints the same warnings.
 
 The form's *Advanced settings* covers a custom hook secret and claude's `--permission-mode`
-(e.g. `acceptEdits` for agents that must write files in their sandbox). Three things are
-deliberately CLI-only: `bypassPermissions` (too dangerous for a one-click UI), `--visible`
-(its callbacks carry no result, which breaks the job loop) and HMAC auth (the hub's runner
-doesn't sign requests yet — phase 2). For those, create the hook with `awb add` and publish it
-through the "I already have a hook" mode.
+(e.g. `acceptEdits` for agents that must write files in their sandbox, or `bypassPermissions`
+for agents that must run commands — fixing a PR's CI, running tests…). **`bypassPermissions` is
+dangerous**: it disables every permission check, so anyone who can submit a job to that agent
+can run arbitrary commands on the operator's machine. The UI asks for an explicit confirmation
+and the API requires `acceptBypassRisk: true` alongside it — it can never be enabled by
+accident. Two things remain deliberately CLI-only: `--visible` (its callbacks carry no result,
+which breaks the job loop) and HMAC auth (the hub's runner doesn't sign requests yet — phase
+2). For those, create the hook with `awb add` and publish it through the "I already have a
+hook" mode.
 
 ## How a job flows
 
@@ -131,13 +135,64 @@ with the phase-2 API keys.
 |---|---|
 | `GET /api/agents` | Public agent list (no secrets, no hook URLs). |
 | `POST /api/agents` | Register an agent (`Authorization: Bearer <admin token>`). |
-| `POST /api/publish` | Create the awb hook **and** register the agent in one step (admin token; hub and awb on the same machine). Body: `{name, description?, owner?, tags?, workdir?, promptTemplate?, secret?, permissionMode?}` — `permissionMode` accepts awb's modes except `bypassPermissions`, which stays CLI-only on purpose. |
+| `POST /api/publish` | Create the awb hook **and** register the agent in one step (admin token; hub and awb on the same machine). Body: `{name, description?, owner?, tags?, workdir?, promptTemplate?, secret?, permissionMode?, acceptBypassRisk?}` — `permissionMode` accepts all of awb's modes; `bypassPermissions` is only accepted together with `acceptBypassRisk: true` (it lets job submitters run arbitrary commands on the operator's machine). |
 | `DELETE /api/agents/:name` | Remove an agent (admin token). |
 | `GET /api/jobs` · `GET /api/jobs/:id` | Job list / job status + result. |
 | `POST /api/jobs` | Submit `{ "agent": "...", "input": "...", "sessionId"? }` — with `sessionId` the run resumes that Claude session. |
 | `POST /api/jobs/:id/result` | awb's result callback (per-job `?token=`). |
 | `GET /` | The web UI. |
 | `GET /health` | Liveness + agent count. |
+
+## Integrating from Flowise
+
+Any Flowise agent can dispatch jobs to the hub with a **Custom Tool** that `POST`s to
+`http://127.0.0.1:8892/api/jobs`. Two Flowise sandbox details must be configured first.
+
+**1. The real `.env`.** Flowise loads its environment from one specific file, not the current
+working directory: `<flowise-app>/node_modules/flowise/.env` (set by
+`dotenv.config({ path: path.join(__dirname, '..', '..', '.env') })` in `dist/commands/base.js`
+and `dist/utils/config.js`). A `.env` next to `package.json` is silently ignored. Put this in
+that file and restart Flowise (the variable is read once at startup):
+
+```env
+# Disables the SSRF deny list so the sandbox can reach 127.0.0.1 (loopback is blocked by
+# default: 127.0.0.0/8, localhost, 172.16.0.0/12, 192.168.0.0/16, ...).
+HTTP_SECURITY_CHECK=false
+```
+
+**2. Use `axios`, not `fetch`/`http`/`child_process`.** Custom Tool functions run inside a
+`vm2` NodeVM sandbox (`flowise-components/dist/src/utils.js`) whose default built-in modules
+are only `assert, buffer, crypto, events, path, querystring, timers, url, zlib`. `require('http')`,
+`require('child_process')` and the global `fetch` all throw (`Cannot find module 'http'` /
+`fetch is not defined`). The only HTTP libraries the sandbox allows are **axios** and
+**node-fetch** (`defaultAllowExternalDependencies`), which Flowise wraps with a secure request
+helper — and with `HTTP_SECURITY_CHECK=false` that wrapper lets the call reach loopback. So
+build the tool around `axios`:
+
+```js
+// Tool name: post_job   |   params: agent (string, req), input (string, req)
+const axios = require('axios');
+const agent = $agent;
+const input = $input;
+try {
+    const res = await axios.post('http://127.0.0.1:8892/api/jobs',
+        { agent, input },
+        { headers: { 'Content-Type': 'application/json' } });
+    return 'HTTP ' + res.status + '\n' + JSON.stringify(res.data);
+} catch (e) {
+    return 'Error: ' + (e.message || e) + (e.response ? ' | body:' + JSON.stringify(e.response.data) : '');
+}
+```
+
+Structured parameters (`$agent`, `$input`) mean the model never assembles a shell command or
+JSON string, so there are no quote-escaping hazards and no way to hang the tool on an
+unterminated command.
+
+> **Gotcha — hallucinated tool calls.** Small / high-temperature models (e.g.
+> `deepseek-v4-flash` at temp 0.9) often skip the tool and invent the result — replying
+> `HOLA` to _"echo HOLA"_ without ever calling it. In Flowise this shows up as
+> `calledTools: []` in the execution record, and the tool will look broken even though it
+> works. Lower the agent's temperature (≈ 0.2) and/or use a model that tool-calls reliably.
 
 ## Roadmap
 

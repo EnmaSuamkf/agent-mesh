@@ -82,13 +82,13 @@ export function inspectLocalHook(hookUrl: string): LocalHookInfo {
 }
 
 /**
- * Permission modes the hub is willing to write into a hook. Mirrors awb's
- * list minus `bypassPermissions`: on a mesh agent that would let anyone who
- * can submit a job run arbitrary Bash on the operator's machine, so enabling
- * it stays a deliberate CLI act (`awb add --permission-mode`), never one
- * admin-token click away.
+ * Permission modes the hub is willing to write into a hook — the full awb
+ * list. `bypassPermissions` lets anyone who can submit a job run arbitrary
+ * Bash on the operator's machine, so the publish endpoint only accepts it
+ * together with an explicit `acceptBypassRisk: true` (the UI asks for a
+ * confirmation before sending it) — never a silent default.
  */
-export const PUBLISHABLE_PERMISSION_MODES = ["acceptEdits", "auto", "manual", "dontAsk", "plan"] as const;
+export const PUBLISHABLE_PERMISSION_MODES = ["acceptEdits", "auto", "manual", "dontAsk", "plan", "bypassPermissions"] as const;
 export type PublishablePermissionMode = (typeof PUBLISHABLE_PERMISSION_MODES)[number];
 
 export interface HookOptions {

@@ -397,14 +397,18 @@
                       <option value="auto">auto</option>
                       <option value="manual">manual</option>
                       <option value="dontAsk">dontAsk — doesn't authorize writes despite the name</option>
+                      <option value="bypassPermissions">⚠ bypassPermissions — no checks at all: edits, Bash, git, network</option>
                     </select>
                     <p class="field-hint">
                       Passed through as claude's --permission-mode. Careful with acceptEdits:
                       anyone who submits a task can make the agent write in its workdir — only use
-                      it with a sandbox workdir. bypassPermissions isn't offered here on purpose
-                      (CLI only). Neither are --visible and HMAC: the first breaks the result
-                      callback and the second arrives in phase 2 — for those, create the hook with
-                      awb add and use the "I already have a hook" mode.
+                      it with a sandbox workdir. ⚠ bypassPermissions goes much further: the agent
+                      runs any command without asking, so anyone who can submit a job can execute
+                      arbitrary commands on this machine — reserve it for agents that truly need
+                      it (e.g. running git/tests to fix a PR) and you'll be asked to confirm.
+                      --visible and HMAC stay CLI-only: the first breaks the result callback and
+                      the second arrives in phase 2 — for those, create the hook with awb add and
+                      use the "I already have a hook" mode.
                     </p>
                   </div>
                 </div>
@@ -782,6 +786,15 @@
           if (customSecret) payload.secret = customSecret;
           const permissionMode = $("pub-permission").value;
           if (permissionMode) payload.permissionMode = permissionMode;
+          if (permissionMode === "bypassPermissions") {
+            const ok = confirm(
+              "bypassPermissions disables EVERY permission check: anyone who can submit a job to this agent " +
+              "can run arbitrary commands on this machine (edit files, run Bash, push to git, reach the network).\n\n" +
+              "Publish '" + payload.name + "' with full access anyway?"
+            );
+            if (!ok) return;
+            payload.acceptBypassRisk = true;
+          }
         } else {
           path = "/api/agents";
           payload.hookUrl = $("pub-hook-url").value.trim();

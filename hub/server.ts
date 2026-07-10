@@ -231,7 +231,16 @@ export function createServer(cfg: HubConfig, log: Logger): http.Server {
 				if (typeof body.permissionMode === "string" && body.permissionMode !== "") {
 					if (!PUBLISHABLE_PERMISSION_MODES.includes(body.permissionMode as PublishablePermissionMode)) {
 						sendJson(res, 400, {
-							error: `invalid permissionMode (allowed: ${PUBLISHABLE_PERMISSION_MODES.join(", ")}; bypassPermissions is CLI-only on purpose)`,
+							error: `invalid permissionMode (allowed: ${PUBLISHABLE_PERMISSION_MODES.join(", ")})`,
+						});
+						return;
+					}
+					// bypassPermissions gives job submitters arbitrary command execution on
+					// this machine; it must be opted into explicitly, not just selected.
+					if (body.permissionMode === "bypassPermissions" && body.acceptBypassRisk !== true) {
+						sendJson(res, 400, {
+							error:
+								"bypassPermissions disables every permission check: anyone who can submit a job can run arbitrary commands on this machine. Send acceptBypassRisk: true to confirm you want that.",
 						});
 						return;
 					}

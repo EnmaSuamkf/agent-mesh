@@ -309,14 +309,23 @@ Workdir:    /home/you/agentmesh-sandbox</code></pre>
         </p>
         <ul>
           <li><strong>Custom hook secret</strong> — leave empty to autogenerate one (recommended).</li>
-          <li><strong>Permission mode</strong> — passed through as claude's <code>--permission-mode</code>. The useful one is <code>acceptEdits</code>, for agents that must create/edit files; anyone who can submit a job can then make the agent write in its workdir, so only use it with a sandbox workdir.</li>
+          <li><strong>Permission mode</strong> — passed through as claude's <code>--permission-mode</code>. <code>acceptEdits</code> is for agents that must create/edit files; anyone who can submit a job can then make the agent write in its workdir, so only use it with a sandbox workdir. <code>bypassPermissions</code> is for agents that must also run commands (fixing a PR's CI, running tests, using git) — see the warning below.</li>
         </ul>
+        <div class="callout warn">
+          <span class="tag">bypassPermissions</span>
+          <p>
+            <code>bypassPermissions</code> disables <strong>every</strong> permission check: the agent
+            edits files, runs Bash, uses git and reaches the network without asking. On a mesh agent
+            that means anyone who can submit a job can run arbitrary commands on the operator's
+            machine. It can't be enabled by accident: the UI asks for an explicit confirmation and
+            the API only accepts it together with <code>acceptBypassRisk: true</code>. Reserve it for
+            agents that truly need it, in a workdir you're prepared to treat as compromised.
+          </p>
+        </div>
         <div class="callout warn">
           <span class="tag">cli-only on purpose</span>
           <p>
-            Three awb options are <strong>not</strong> offered by the form: <code>bypassPermissions</code>
-            (on a mesh agent it means anyone who can submit a job can run arbitrary commands on the
-            operator's machine — enabling it must stay a deliberate <code>awb add</code> act),
+            Two awb options are <strong>not</strong> offered by the form:
             <code>--visible</code> (its callbacks carry no <code>result</code>, which breaks the job
             loop), and HMAC auth (the hub's runner doesn't sign requests yet — phase 2). For those,
             create the hook with <code>awb add</code> and publish it through the
@@ -464,7 +473,7 @@ curl -s http://127.0.0.1:8892/health</code></pre>
             <tbody>
               <tr><td><code>GET /api/agents</code></td><td>Public agent list — name, description, owner, tags, enabled. No secrets, no hook URLs.</td></tr>
               <tr><td><code>POST /api/agents</code></td><td>Register/update an agent (<code>Authorization: Bearer &lt;admin token&gt;</code>). Body: <code>{name, hookUrl, secret, description?, owner?, tags?, enabled?}</code>.</td></tr>
-              <tr><td><code>POST /api/publish</code></td><td>Create the awb hook <strong>and</strong> register the agent in one step (admin token). Body: <code>{name, description?, owner?, tags?, workdir?, promptTemplate?, secret?, permissionMode?}</code> — <code>permissionMode</code> accepts awb's modes except <code>bypassPermissions</code> (CLI-only). Requires hub and awb on the same machine.</td></tr>
+              <tr><td><code>POST /api/publish</code></td><td>Create the awb hook <strong>and</strong> register the agent in one step (admin token). Body: <code>{name, description?, owner?, tags?, workdir?, promptTemplate?, secret?, permissionMode?, acceptBypassRisk?}</code> — <code>permissionMode</code> accepts all of awb's modes; <code>bypassPermissions</code> requires <code>acceptBypassRisk: true</code>. Requires hub and awb on the same machine.</td></tr>
               <tr><td><code>DELETE /api/agents/:name</code></td><td>Remove an agent (admin token).</td></tr>
               <tr><td><code>GET /api/jobs</code> · <code>GET /api/jobs/:id</code></td><td>Recent jobs / one job's status + result.</td></tr>
               <tr><td><code>POST /api/jobs</code></td><td>Submit <code>{"agent":"…","input":"…","sessionId"?}</code> — with <code>sessionId</code> the run resumes that Claude session. Answers <code>202</code> with the pending job.</td></tr>
@@ -473,6 +482,77 @@ curl -s http://127.0.0.1:8892/health</code></pre>
               <tr><td><code>GET /health</code></td><td>Liveness + agent count.</td></tr>
             </tbody>
           </table>
+        </div>
+      </section>
+
+      <section id="integrating-from-flowise">
+        <h2>Integrating from Flowise</h2>
+        <p>
+          Any Flowise agent can dispatch jobs to the hub with a <strong>Custom Tool</strong> that
+          <code>POST</code>s to <code>http://127.0.0.1:8892/api/jobs</code>. Two things in Flowise's
+          sandbox get in the way and must be configured first.
+        </p>
+
+        <h3>1. Flowise's <code>.env</code> (the real one)</h3>
+        <p>
+          Flowise loads its environment from <em>one specific file</em>, not the current working
+          directory: <code>&lt;flowise-app&gt;/node_modules/flowise/.env</code> (set by
+          <code>dotenv.config({ path: path.join(__dirname, '..', '..', '.env') })</code> in
+          <code>dist/commands/base.js</code> and <code>dist/utils/config.js</code>). A <code>.env</code>
+          next to <code>package.json</code> is silently ignored.
+        </p>
+        <p>
+          It must contain at least:
+        </p>
+        <pre><code># node_modules/flowise/.env
+# Disables the SSRF deny list so the sandbox can reach 127.0.0.1 (loopback is
+# blocked by default: 127.0.0.0/8, localhost, 172.16.0.0/12, 192.168.0.0/16, ...).
+HTTP_SECURITY_CHECK=false</code></pre>
+        <p>
+          Restart Flowise after editing it. The variable is read once at startup.
+        </p>
+
+        <h3>2. The tool: use <code>axios</code>, not <code>fetch</code>/<code>http</code>/<code>child_process</code></h3>
+        <p>
+          Custom Tool functions run inside a <code>vm2</code> NodeVM sandbox
+          (<code>flowise-components/dist/src/utils.js</code>). Its default built-in modules are
+          only <code>assert, buffer, crypto, events, path, querystring, timers, url, zlib</code> —
+          <code>require('http')</code>, <code>require('child_process')</code> and the global
+          <code>fetch</code> all throw and the tool fails with
+          <code>Cannot find module 'http'</code> / <code>fetch is not defined</code>. The only HTTP
+          libraries the sandbox allows are <strong>axios</strong> and <strong>node-fetch</strong>
+          (<code>defaultAllowExternalDependencies</code>), which Flowise wraps with a secure
+          request helper — and with <code>HTTP_SECURITY_CHECK=false</code> that wrapper lets the
+          call reach loopback. So build the tool around <code>axios</code>:
+        </p>
+        <pre><code>// Tool name: post_job   |   params: agent (string, req), input (string, req)
+const axios = require('axios');
+const agent = $agent;
+const input = $input;
+try {
+    const res = await axios.post('http://127.0.0.1:8892/api/jobs',
+        { agent, input },
+        { headers: { 'Content-Type': 'application/json' } });
+    return 'HTTP ' + res.status + '\n' + JSON.stringify(res.data);
+} catch (e) {
+    return 'Error: ' + (e.message || e) + (e.response ? ' | body:' + JSON.stringify(e.response.data) : '');
+}</code></pre>
+        <p>
+          Structured parameters (<code>$agent</code>, <code>$input</code>) mean the model never
+          has to assemble a shell command or JSON string, so there are no quote-escaping hazards
+          and no way for it to hang the tool on an unterminated command.
+        </p>
+
+        <div class="callout warn">
+          <span class="tag">gotcha</span>
+          <p>
+            Small / high-temperature models (e.g. <code>deepseek-v4-flash</code> at temp 0.9)
+            often <strong>skip the tool and hallucinate the result</strong> — replying
+            <code>HOLA</code> to <em>"echo HOLA"</em> without ever calling it. In Flowise this
+            shows up as <code>calledTools: []</code> in the execution record. Lower the agent's
+            temperature (≈ 0.2) and/or use a model that tool-calls reliably, or the tool will
+            look broken even though it works.
+          </p>
         </div>
       </section>
 
