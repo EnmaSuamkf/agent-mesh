@@ -308,6 +308,74 @@
         overflow-wrap: anywhere;
         max-width: 56ch;
       }
+
+      /* Job details sections */
+      .job-details-content{
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        margin-top: 0.75rem;
+      }
+      .job-section{
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 0.85rem 1rem;
+      }
+      .job-section-title{
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 0.65rem;
+      }
+      .job-section-content{
+        font-size: 0.85rem;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: var(--text);
+      }
+      .job-section-content code{
+        background: var(--background);
+        padding: 0.15rem 0.4rem;
+        border-radius: 3px;
+        font-family: var(--mono);
+        font-size: 0.9em;
+        color: var(--accent);
+      }
+      .job-session-row{
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+      }
+      .job-session-id{
+        font-family: var(--mono);
+        font-size: 0.85rem;
+        color: var(--accent);
+        background: var(--background);
+        padding: 0.35rem 0.6rem;
+        border-radius: 4px;
+      }
+      .btn-copy-session{
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--muted);
+        padding: 0.3rem 0.65rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .btn-copy-session:hover{
+        border-color: var(--accent);
+        color: var(--accent);
+      }
       .empty{ color: var(--faint); font-size: 0.9rem; padding: 0.8rem; }
 
       footer{
@@ -641,6 +709,7 @@
           checkbox.className = "job-checkbox";
           checkbox.dataset.jobId = job.id;
           checkbox.checked = selectedJobs.has(job.id);
+          checkbox.title = "Select this job";
           checkbox.addEventListener("change", () => {
             if (checkbox.checked) {
               selectedJobs.add(job.id);
@@ -653,25 +722,53 @@
           checkTd.appendChild(checkbox);
           tr.appendChild(checkTd);
           
-          tr.appendChild(el("td", "job-id", job.id.slice(0, 8)));
-          tr.appendChild(el("td", "job-agent", job.agent));
-          tr.appendChild(el("td")).appendChild(el("span", `status ${job.status}`, job.status));
+          const idTd = el("td", "job-id", job.id.slice(0, 8));
+          idTd.title = `Job ID: ${job.id}`;
+          idTd.style.cursor = "help";
+          tr.appendChild(idTd);
+          
+          const agentTd = el("td", "job-agent", job.agent);
+          agentTd.title = `Agent: ${job.agent}`;
+          agentTd.style.cursor = "help";
+          tr.appendChild(agentTd);
+          
+          const statusTd = el("td");
+          const statusSpan = el("span", `status ${job.status}`, job.status);
+          const statusMessages = {
+            done: "Status: Completed successfully",
+            running: "Status: Agent is currently working on this task",
+            pending: "Status: Waiting in queue to be processed",
+            failed: "Status: Job failed with an error"
+          };
+          statusSpan.title = statusMessages[job.status] || "Status: " + job.status;
+          statusSpan.style.cursor = "help";
+          statusTd.appendChild(statusSpan);
+          tr.appendChild(statusTd);
 
           const sessTd = el("td");
           if (job.sessionId) {
             const chip = el("button", "session-chip", `${job.resumeSessionId ? "↻ " : ""}${job.sessionId.slice(0, 8)}`);
             chip.type = "button";
-            chip.title = `${job.resumeSessionId ? `Continuation of ${job.resumeSessionId.slice(0, 8)}… — r` : "R"}an in session ${job.sessionId}. Click to keep this conversation going.`;
+            chip.title = `Session ID: ${job.sessionId}${job.resumeSessionId ? ` (continuation of ${job.resumeSessionId})` : ""}. Click to continue this conversation.`;
             chip.addEventListener("click", () => continueSession(job));
             sessTd.appendChild(chip);
           } else {
             const none = el("span", "session-none",
               job.status === "pending" || job.status === "running" ? "…" : "stateless");
-            none.title = "No session recorded — this job can't be continued.";
+            if (job.status === "pending" || job.status === "running") {
+              none.title = "Session will be available when job completes";
+            } else {
+              none.title = "No session (stateless run) — this job can't be continued";
+            }
+            none.style.cursor = "help";
             sessTd.appendChild(none);
           }
           tr.appendChild(sessTd);
-          tr.appendChild(el("td", "job-time", fmtTime(job.createdAt)));
+          
+          const timeTd = el("td", "job-time", fmtTime(job.createdAt));
+          timeTd.title = `Created at: ${new Date(job.createdAt).toLocaleString()}`;
+          timeTd.style.cursor = "help";
+          tr.appendChild(timeTd);
 
           const cell = el("td");
           const details = document.createElement("details");
@@ -682,19 +779,95 @@
           });
           const preview = job.input.length > 70 ? `${job.input.slice(0, 70)}…` : job.input;
           details.appendChild(el("summary", null, preview));
-          const body = job.status === "failed"
-            ? `⚠ ${job.error || "failed without detail"}`
-            : job.result ?? (job.status === "done" ? "(empty result)" : "… working");
-          const resumedNote = job.resumeSessionId ? `\n(continuation of session ${job.resumeSessionId})` : "";
-          const sessionNote = job.sessionId ? `\n\nsession: ${job.sessionId}` : "";
-          const pre = el("pre", null, `Task:${resumedNote}\n${job.input}\n\nResult:\n${body}${sessionNote}`);
-          details.appendChild(pre);
-          if (job.status === "done" && job.sessionId) {
-            const cont = el("button", "resume-btn", "Continue this conversation →");
-            cont.type = "button";
-            cont.addEventListener("click", () => continueSession(job));
-            details.appendChild(cont);
+          
+          // Create sections container
+          const contentDiv = el("div", "job-details-content");
+          
+          // Task section
+          const taskSection = el("div", "job-section");
+          const taskTitle = el("div", "job-section-title");
+          taskTitle.textContent = "📝 Task";
+          const taskContent = el("div", "job-section-content");
+          taskContent.textContent = job.input;
+          if (job.resumeSessionId) {
+            const resumeNote = document.createElement("div");
+            resumeNote.style.cssText = "margin-top: 0.5rem; font-size: 0.75rem; color: var(--muted); font-style: italic;";
+            resumeNote.textContent = `(continuation of session ${job.resumeSessionId})`;
+            taskContent.appendChild(resumeNote);
           }
+          taskSection.appendChild(taskTitle);
+          taskSection.appendChild(taskContent);
+          contentDiv.appendChild(taskSection);
+          
+          // Result/Status section
+          const resultSection = el("div", "job-section");
+          const resultTitle = el("div", "job-section-title");
+          const resultContent = el("div", "job-section-content");
+          
+          if (job.status === "failed") {
+            resultTitle.textContent = "⚠️ Error";
+            resultContent.textContent = job.error || "failed without detail";
+          } else if (job.status === "done") {
+            resultTitle.textContent = "✅ Result";
+            const resultText = job.result || "(empty result)";
+            // Simple markdown-like code highlighting
+            const parts = resultText.split(/(`[^`]+`)/);
+            parts.forEach((part, i) => {
+              if (part.startsWith('`') && part.endsWith('`')) {
+                const code = document.createElement('code');
+                code.textContent = part.slice(1, -1);
+                resultContent.appendChild(code);
+              } else {
+                resultContent.appendChild(document.createTextNode(part));
+              }
+            });
+          } else if (job.status === "running") {
+            resultTitle.textContent = "⏳ Status";
+            resultContent.textContent = "Agent is working on this task...";
+          } else {
+            resultTitle.textContent = "⏸️ Status";
+            resultContent.textContent = "Waiting in queue...";
+          }
+          
+          resultSection.appendChild(resultTitle);
+          resultSection.appendChild(resultContent);
+          contentDiv.appendChild(resultSection);
+          
+          // Session section (if exists)
+          if (job.sessionId) {
+            const sessionSection = el("div", "job-section");
+            const sessionTitle = el("div", "job-section-title");
+            sessionTitle.textContent = "🔗 Session";
+            const sessionRow = el("div", "job-session-row");
+            
+            const sessionId = el("span", "job-session-id", job.sessionId.slice(0, 8));
+            sessionId.title = job.sessionId;
+            sessionRow.appendChild(sessionId);
+            
+            const copyBtn = el("button", "btn-copy-session", "Copy full ID");
+            copyBtn.type = "button";
+            copyBtn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              navigator.clipboard.writeText(job.sessionId).then(() => {
+                copyBtn.textContent = "✓ Copied!";
+                setTimeout(() => copyBtn.textContent = "Copy full ID", 2000);
+              });
+            });
+            sessionRow.appendChild(copyBtn);
+            
+            if (job.status === "done") {
+              const cont = el("button", "resume-btn", "Continue conversation →");
+              cont.type = "button";
+              cont.addEventListener("click", () => continueSession(job));
+              sessionRow.appendChild(cont);
+            }
+            
+            sessionSection.appendChild(sessionTitle);
+            sessionSection.appendChild(sessionRow);
+            contentDiv.appendChild(sessionSection);
+          }
+          
+          details.appendChild(contentDiv);
           cell.appendChild(details);
           tr.appendChild(cell);
           tbody.appendChild(tr);
