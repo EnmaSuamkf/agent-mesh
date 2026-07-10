@@ -17,6 +17,8 @@ concept paper ([`index.html`](index.html)).
   callback (`callbackUrl` in the event body).
 - **Claude Code CLI** installed and authenticated (it's what awb spawns to run each job).
 
+> **Note**: Make sure the Claude Code CLI is properly configured with your API key before starting the hub. You can verify this by running `claude --version`.
+
 ## Installation
 
 ```bash
