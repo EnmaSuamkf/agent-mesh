@@ -77,7 +77,8 @@
         border-bottom: 1px solid var(--border);
       }
 
-      .agents{ display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 0.8rem; }
+      .agents{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.8rem; }
+      @media (max-width: 640px){ .agents{ grid-template-columns: 1fr; } }
       .agent-card{
         background: var(--surface);
         border: 1px solid var(--border);
@@ -273,6 +274,8 @@
       td.job-agent{ font-family: var(--mono); font-size: 0.8rem; white-space: nowrap; }
       th.sortable{ cursor: pointer; user-select: none; }
       th.sortable:hover{ color: var(--accent); }
+      input[type="checkbox"]{ accent-color: var(--accent); cursor: pointer; }
+      .job-checkbox{ margin: 0; }
       .status{
         font-family: var(--mono);
         font-size: 0.72rem;
@@ -474,11 +477,15 @@
       </section>
 
       <section aria-labelledby="jobs-h">
-        <h2 id="jobs-h">Jobs</h2>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+          <h2 id="jobs-h" style="margin: 0; padding-bottom: 0; border: none;">Jobs</h2>
+          <button id="delete-jobs-btn" class="del-btn" style="display: none; padding: 0.4rem 0.9rem;">Delete selected</button>
+        </div>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
+                <th style="width: 40px;"><input type="checkbox" id="select-all-jobs" title="Select all jobs" /></th>
                 <th>Job</th>
                 <th class="sortable" data-sort="agent">Agent</th>
                 <th class="sortable" data-sort="status">Status</th>
@@ -487,7 +494,7 @@
                 <th>Task / result</th>
               </tr>
             </thead>
-            <tbody id="jobs"><tr><td colspan="6" class="empty">No jobs yet.</td></tr></tbody>
+            <tbody id="jobs"><tr><td colspan="7" class="empty">No jobs yet.</td></tr></tbody>
           </table>
         </div>
       </section>
@@ -505,6 +512,7 @@
       const $ = (id) => document.getElementById(id);
       const POLL_MS = 2500;
       let openJobIds = new Set();
+      let selectedJobs = new Set();
 
       function el(tag, className, text) {
         const node = document.createElement(tag);
@@ -601,17 +609,50 @@
           : `${d.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit" })} ${hm}`;
       }
 
+      function updateDeleteButton() {
+        const btn = $("delete-jobs-btn");
+        if (selectedJobs.size > 0) {
+          btn.style.display = "block";
+          btn.textContent = `Delete selected (${selectedJobs.size})`;
+        } else {
+          btn.style.display = "none";
+        }
+      }
+
       function renderJobs(jobs) {
         const tbody = $("jobs");
         tbody.replaceChildren();
         if (jobs.length === 0) {
           const td = el("td", "empty", "No jobs yet.");
-          td.colSpan = 6;
+          td.colSpan = 7;
           tbody.appendChild(el("tr")).appendChild(td);
+          $("select-all-jobs").checked = false;
+          $("select-all-jobs").disabled = true;
           return;
         }
+        $("select-all-jobs").disabled = false;
         for (const job of jobs) {
           const tr = el("tr");
+          
+          // Checkbox column
+          const checkTd = el("td");
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.className = "job-checkbox";
+          checkbox.dataset.jobId = job.id;
+          checkbox.checked = selectedJobs.has(job.id);
+          checkbox.addEventListener("change", () => {
+            if (checkbox.checked) {
+              selectedJobs.add(job.id);
+            } else {
+              selectedJobs.delete(job.id);
+            }
+            updateDeleteButton();
+            updateSelectAllCheckbox();
+          });
+          checkTd.appendChild(checkbox);
+          tr.appendChild(checkTd);
+          
           tr.appendChild(el("td", "job-id", job.id.slice(0, 8)));
           tr.appendChild(el("td", "job-agent", job.agent));
           tr.appendChild(el("td")).appendChild(el("span", `status ${job.status}`, job.status));
@@ -658,7 +699,78 @@
           tr.appendChild(cell);
           tbody.appendChild(tr);
         }
+        updateSelectAllCheckbox();
       }
+
+      function updateSelectAllCheckbox() {
+        const checkboxes = document.querySelectorAll(".job-checkbox");
+        const selectAll = $("select-all-jobs");
+        if (checkboxes.length === 0) {
+          selectAll.checked = false;
+          return;
+        }
+        const allChecked = [...checkboxes].every(cb => cb.checked);
+        selectAll.checked = allChecked;
+      }
+
+      $("select-all-jobs").addEventListener("change", (ev) => {
+        const checked = ev.target.checked;
+        document.querySelectorAll(".job-checkbox").forEach((cb) => {
+          cb.checked = checked;
+          if (checked) {
+            selectedJobs.add(cb.dataset.jobId);
+          } else {
+            selectedJobs.delete(cb.dataset.jobId);
+          }
+        });
+        updateDeleteButton();
+      });
+
+      $("delete-jobs-btn").addEventListener("click", async () => {
+        if (selectedJobs.size === 0) return;
+        const count = selectedJobs.size;
+        if (!confirm(`Delete ${count} selected job${count > 1 ? "s" : ""}? This cannot be undone.`)) return;
+        
+        const btn = $("delete-jobs-btn");
+        const msg = $("agents-msg");
+        let token = (localStorage.getItem("meshAdminToken") || "").trim();
+        if (!token) {
+          token = (prompt(
+            "Admin token — it lives in ~/.agentmesh-hub/config.json (adminToken) and the hub prints it at startup:",
+          ) || "").trim();
+          if (!token) return;
+        }
+        
+        btn.disabled = true;
+        msg.classList.remove("error");
+        msg.textContent = "Deleting jobs...";
+        
+        try {
+          await api("/api/jobs/batch-delete", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ ids: [...selectedJobs] }),
+          });
+          localStorage.setItem("meshAdminToken", token);
+          selectedJobs.clear();
+          updateDeleteButton();
+          msg.textContent = `${count} job${count > 1 ? "s" : ""} deleted.`;
+          await refresh();
+        } catch (err) {
+          msg.classList.add("error");
+          if (err.message === "unauthorized") {
+            localStorage.removeItem("meshAdminToken");
+            msg.textContent = "Invalid admin token — try again.";
+          } else {
+            msg.textContent = `Could not delete jobs: ${err.message}`;
+          }
+        } finally {
+          btn.disabled = false;
+        }
+      });
 
       // Pre-fills the submit form to keep talking to the session a job ran in.
       function continueSession(job) {

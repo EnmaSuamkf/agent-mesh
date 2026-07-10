@@ -219,3 +219,13 @@ export function listJobs(limit = 50): Job[] {
 	const rows = open().prepare("SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?").all(limit);
 	return (rows as Record<string, unknown>[]).map(rowToJob);
 }
+
+export function deleteJob(id: string): boolean {
+	return open().prepare("DELETE FROM jobs WHERE id = ?").run(id).changes > 0;
+}
+
+export function deleteJobs(ids: string[]): number {
+	if (ids.length === 0) return 0;
+	const placeholders = ids.map(() => "?").join(",");
+	return open().prepare(`DELETE FROM jobs WHERE id IN (${placeholders})`).run(...ids).changes;
+}
