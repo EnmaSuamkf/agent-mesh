@@ -227,5 +227,5 @@ export function deleteJob(id: string): boolean {
 export function deleteJobs(ids: string[]): number {
 	if (ids.length === 0) return 0;
 	const placeholders = ids.map(() => "?").join(",");
-	return open().prepare(`DELETE FROM jobs WHERE id IN (${placeholders})`).run(...ids).changes;
+	return Number(open().prepare(`DELETE FROM jobs WHERE id IN (${placeholders})`).run(...ids).changes);
 }

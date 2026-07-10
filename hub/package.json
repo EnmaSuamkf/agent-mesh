@@ -11,9 +11,11 @@
     "node": ">=24"
   },
   "scripts": {
-    "start": "node daemon.ts"
+    "start": "node daemon.ts",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@types/node": "^26.1.0"
+    "@types/node": "^26.1.0",
+    "typescript": "^7.0.2"
   }
 }
