@@ -17,6 +17,7 @@
  * Job reads run lazy expiry first (see db.ts), so a job whose callback never
  * arrives shows up as failed/timeout instead of hanging in `running` forever.
  */
+import * as child_process from "node:child_process";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as http from "node:http";
@@ -403,6 +404,58 @@ export function createServer(cfg: HubConfig, log: Logger): http.Server {
 				});
 				log(`job ${job.id} ${ok ? "done" : `failed (${error})`}`);
 				sendJson(res, 200, { ok: true });
+			});
+			return;
+		}
+
+		if (parts[1] === "jobs" && parts[2] && parts[3] === "open-terminal" && req.method === "POST") {
+			readJsonBody(req, res, cfg.maxInputBytes, (body) => {
+				const sessionId = String(body.sessionId || "");
+				const workdir = String(body.workdir || process.cwd());
+				
+				if (!sessionId) {
+					sendJson(res, 400, { error: "sessionId is required" });
+					return;
+				}
+
+				try {
+					// Detect terminal emulator and open it
+					const command = `claude --resume ${sessionId}`;
+					let terminalCmd: string;
+
+					if (process.platform === "linux") {
+						// Try common Linux terminal emulators
+						if (process.env.TERM_PROGRAM) {
+							terminalCmd = `x-terminal-emulator -e 'cd "${workdir}" && ${command}; exec bash'`;
+						} else {
+							// Fallback to gnome-terminal or xterm
+							terminalCmd = `gnome-terminal --working-directory="${workdir}" -- bash -c '${command}; exec bash' 2>/dev/null || xterm -e 'cd "${workdir}" && ${command}; exec bash'`;
+						}
+					} else if (process.platform === "darwin") {
+						// macOS
+						terminalCmd = `osascript -e 'tell application "Terminal" to do script "cd \"${workdir}\" && ${command}"' -e 'tell application "Terminal" to activate'`;
+					} else if (process.platform === "win32") {
+						// Windows
+						terminalCmd = `start cmd /K "cd /d \"${workdir}\" && ${command}"`;
+					} else {
+						sendJson(res, 500, { error: "unsupported_platform" });
+						return;
+					}
+
+					child_process.exec(terminalCmd, (error) => {
+						if (error) {
+							log(`Failed to open terminal: ${error.message}`);
+							sendJson(res, 500, { error: "failed_to_open_terminal", message: error.message });
+							return;
+						}
+					});
+
+					log(`Opening terminal for session ${sessionId} in ${workdir}`);
+					sendJson(res, 200, { ok: true });
+				} catch (err) {
+					log(`Error opening terminal: ${err}`);
+					sendJson(res, 500, { error: "internal_error" });
+				}
 			});
 			return;
 		}

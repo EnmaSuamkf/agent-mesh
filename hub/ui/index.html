@@ -376,6 +376,24 @@
         border-color: var(--accent);
         color: var(--accent);
       }
+      .btn-open-terminal{
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 0.4rem 0.75rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+      }
+      .btn-open-terminal:hover{
+        background: var(--background);
+        border-color: var(--accent);
+        color: var(--accent);
+      }
       .empty{ color: var(--faint); font-size: 0.9rem; padding: 0.8rem; }
 
       footer{
@@ -833,6 +851,18 @@
           resultSection.appendChild(resultContent);
           contentDiv.appendChild(resultSection);
           
+          // Model section
+          const modelSection = el("div", "job-section");
+          const modelTitle = el("div", "job-section-title");
+          modelTitle.textContent = "🤖 Model";
+          const modelContent = el("div", "job-section-content");
+          modelContent.textContent = "Claude" + (job.provider ? ` (${job.provider})` : "");
+          modelContent.style.fontFamily = "var(--mono)";
+          modelContent.style.fontSize = "0.85rem";
+          modelSection.appendChild(modelTitle);
+          modelSection.appendChild(modelContent);
+          contentDiv.appendChild(modelSection);
+          
           // Session section (if exists)
           if (job.sessionId) {
             const sessionSection = el("div", "job-section");
@@ -860,6 +890,39 @@
               cont.type = "button";
               cont.addEventListener("click", () => continueSession(job));
               sessionRow.appendChild(cont);
+              
+              const openTermBtn = el("button", "btn-open-terminal", "💻 Open conversation");
+              openTermBtn.type = "button";
+              openTermBtn.title = "Open a terminal and resume this session with Claude";
+              openTermBtn.addEventListener("click", async (e) => {
+                e.stopPropagation();
+                try {
+                  // Get agent info to find workdir
+                  const agentResp = await fetch('/api/agents');
+                  const agentsData = await agentResp.json();
+                  const agent = agentsData.agents?.find(a => a.name === job.agent);
+                  
+                  const resp = await fetch(`/api/jobs/${job.id}/open-terminal`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      sessionId: job.sessionId,
+                      workdir: agent?.workdir || process.cwd()
+                    })
+                  });
+                  
+                  if (resp.ok) {
+                    openTermBtn.textContent = "✓ Terminal opened!";
+                    setTimeout(() => openTermBtn.textContent = "💻 Open conversation", 2000);
+                  } else {
+                    const err = await resp.json();
+                    alert(`Failed to open terminal: ${err.error || 'Unknown error'}`);
+                  }
+                } catch (err) {
+                  alert(`Error: ${err.message}`);
+                }
+              });
+              sessionRow.appendChild(openTermBtn);
             }
             
             sessionSection.appendChild(sessionTitle);
