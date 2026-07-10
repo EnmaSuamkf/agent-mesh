@@ -34,6 +34,8 @@ import type { Agent, Job } from "./db.ts";
 import {
 	completeJob,
 	deleteAgent,
+	deleteJob,
+	deleteJobs,
 	expireStaleJobs,
 	getAgent,
 	getJob,
@@ -330,6 +332,25 @@ export function createServer(cfg: HubConfig, log: Logger): http.Server {
 			}
 		}
 
+		// Batch delete debe estar antes de las rutas genéricas con parts[2]
+		if (parts[1] === "jobs" && parts[2] === "batch-delete" && req.method === "POST") {
+			if (!isAdmin(cfg, req.headers)) {
+				sendJson(res, 401, { error: "unauthorized" });
+				return;
+			}
+			readJsonBody(req, res, cfg.maxInputBytes, (body) => {
+				const ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean) : [];
+				if (ids.length === 0) {
+					sendJson(res, 400, { error: "ids array is required" });
+					return;
+				}
+				const deleted = deleteJobs(ids);
+				log(`deleted ${deleted} job(s)`);
+				sendJson(res, 200, { ok: true, deleted });
+			});
+			return;
+		}
+
 		if (parts[1] === "jobs" && parts[2] && !parts[3] && req.method === "GET") {
 			expireStaleJobs(cfg.jobTimeoutMs);
 			const job = getJob(parts[2]);
@@ -338,6 +359,21 @@ export function createServer(cfg: HubConfig, log: Logger): http.Server {
 				return;
 			}
 			sendJson(res, 200, { job: publicJob(job) });
+			return;
+		}
+
+		if (parts[1] === "jobs" && parts[2] && !parts[3] && req.method === "DELETE") {
+			if (!isAdmin(cfg, req.headers)) {
+				sendJson(res, 401, { error: "unauthorized" });
+				return;
+			}
+			const id = parts[2];
+			if (!deleteJob(id)) {
+				sendJson(res, 404, { error: "unknown_job", id });
+				return;
+			}
+			log(`job ${id} deleted`);
+			sendJson(res, 200, { ok: true });
 			return;
 		}
 
