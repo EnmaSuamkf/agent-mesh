@@ -423,14 +423,16 @@ export function createServer(cfg: HubConfig, log: Logger): http.Server {
 					const command = `claude --resume ${sessionId}`;
 					let terminalCmd: string;
 
+					// Get display environment
+					const display = process.env.DISPLAY || ":0";
+					const waylandDisplay = process.env.WAYLAND_DISPLAY || "wayland-0";
+					const home = process.env.HOME || os.homedir();
+					const uid = process.getuid ? process.getuid() : 1000;
+					const xdgRuntimeDir = process.env.XDG_RUNTIME_DIR || `/run/user/${uid}`;
+
 					if (process.platform === "linux") {
-						// Try common Linux terminal emulators
-						if (process.env.TERM_PROGRAM) {
-							terminalCmd = `x-terminal-emulator -e 'cd "${workdir}" && ${command}; exec bash'`;
-						} else {
-							// Fallback to gnome-terminal or xterm
-							terminalCmd = `gnome-terminal --working-directory="${workdir}" -- bash -c '${command}; exec bash' 2>/dev/null || xterm -e 'cd "${workdir}" && ${command}; exec bash'`;
-						}
+						// Use gnome-terminal with explicit display and title
+						terminalCmd = `gnome-terminal --title="AgentMesh Session ${sessionId.slice(0, 8)}" --working-directory="${workdir}" -- bash -c 'echo "Resuming Claude session ${sessionId}..."; echo ""; ${command}; exec bash'`;
 					} else if (process.platform === "darwin") {
 						// macOS
 						terminalCmd = `osascript -e 'tell application "Terminal" to do script "cd \"${workdir}\" && ${command}"' -e 'tell application "Terminal" to activate'`;
@@ -442,15 +444,24 @@ export function createServer(cfg: HubConfig, log: Logger): http.Server {
 						return;
 					}
 
-					child_process.exec(terminalCmd, (error) => {
+					const execOptions = {
+						env: {
+							...process.env,
+							DISPLAY: display,
+							WAYLAND_DISPLAY: waylandDisplay,
+							XDG_RUNTIME_DIR: xdgRuntimeDir,
+							HOME: home,
+						},
+					};
+
+					log(`Opening terminal for session ${sessionId} in ${workdir}`);
+					child_process.exec(terminalCmd, execOptions, (error, stdout, stderr) => {
 						if (error) {
 							log(`Failed to open terminal: ${error.message}`);
-							sendJson(res, 500, { error: "failed_to_open_terminal", message: error.message });
-							return;
+							if (stderr) log(`Terminal stderr: ${stderr}`);
 						}
 					});
 
-					log(`Opening terminal for session ${sessionId} in ${workdir}`);
 					sendJson(res, 200, { ok: true });
 				} catch (err) {
 					log(`Error opening terminal: ${err}`);
