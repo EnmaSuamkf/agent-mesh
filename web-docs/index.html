@@ -199,6 +199,7 @@
           <a href="#checking-status">Checking status</a>
           <a href="#command-reference">Command reference</a>
           <a href="#api-reference">API reference</a>
+          <a href="#sharing-remotely">Sharing the hub remotely</a>
           <a href="#current-limitations">Current limitations</a>
         </nav>
       </header>
@@ -377,11 +378,13 @@ curl -s http://127.0.0.1:8892/api/jobs/&lt;id&gt;</code></pre>
           Resumed runs report the same session id, so chains can go on indefinitely.
         </p>
         <div class="callout warn">
-          <span class="tag">phase-1 caveat</span>
+          <span class="tag">caveat</span>
           <p>
-            Job history — session ids included — is visible to anyone with access to the hub, so
-            in a shared hub someone else could resume "your" conversation. Per-user isolation
-            arrives with the phase-2 API keys.
+            Job history — session ids included — is visible to anyone with access to the hub:
+            API keys authenticate <em>submission</em> (see
+            <a href="#sharing-remotely">Sharing the hub remotely</a>), but read endpoints are not
+            key-gated yet, so in a shared hub someone else could resume "your" conversation.
+            Per-user isolation is still pending.
           </p>
         </div>
       </section>
@@ -433,7 +436,7 @@ hub    →  job <span class="hl">done</span> — the UI sees it on the next poll
       <section id="security">
         <h2>Security</h2>
         <ul>
-          <li>Hub, awb and the agents all bind to <code>127.0.0.1</code> — nothing listens on the network in phase 1.</li>
+          <li>Hub, awb and the agents all bind to <code>127.0.0.1</code> — nothing listens on the network directly. Remote access goes through a <code>cloudflared</code> tunnel, and remote job submission requires a per-user API key (see <a href="#sharing-remotely">Sharing the hub remotely</a>).</li>
           <li>Agents run in a dedicated sandbox workdir (never a real repo), with no <code>--permission-mode</code>: they can answer but not write files. <strong>Job input is untrusted by design</strong> — that's the concept paper's core premise.</li>
           <li>Hook secrets live only in the hub's DB; the public API and the UI never return them (nor the hook URLs). The UI renders results with <code>textContent</code> only, so a hostile result can't inject markup.</li>
           <li>awb's result callback is authenticated with a random per-job token, and awb itself only accepts loopback callback URLs.</li>
@@ -460,6 +463,9 @@ curl -s http://127.0.0.1:8892/health</code></pre>
               <tr><td><code>mesh list</code></td><td>Lists published agents.</td></tr>
               <tr><td><code>mesh submit &lt;agent&gt; [--session-id &lt;id&gt;] &lt;input...&gt;</code></td><td>Submits a job and waits, printing the result (exit 1 if it fails). With <code>--session-id</code> the agent resumes that Claude session instead of starting fresh.</td></tr>
               <tr><td><code>mesh jobs</code></td><td>Shows recent jobs.</td></tr>
+              <tr><td><code>mesh add-key &lt;name&gt; [--expires &lt;dur&gt;] [--max-uses &lt;N&gt;]</code></td><td>Creates (or rotates) an API key for a remote user. Printed once — only its sha256 hash is stored. <code>--expires</code> takes <code>30m</code>/<code>12h</code>/<code>7d</code>; <code>--max-uses</code> caps accepted remote jobs (<code>1</code> = single use). Both optional and combinable.</td></tr>
+              <tr><td><code>mesh list-keys</code></td><td>Lists keys: owner, creation date, expiry and uses left — never the keys themselves.</td></tr>
+              <tr><td><code>mesh rm-key &lt;name&gt;</code></td><td>Revokes an API key.</td></tr>
             </tbody>
           </table>
         </div>
@@ -476,8 +482,11 @@ curl -s http://127.0.0.1:8892/health</code></pre>
               <tr><td><code>POST /api/publish</code></td><td>Create the awb hook <strong>and</strong> register the agent in one step (admin token). Body: <code>{name, description?, owner?, tags?, workdir?, promptTemplate?, secret?, permissionMode?, acceptBypassRisk?}</code> — <code>permissionMode</code> accepts all of awb's modes; <code>bypassPermissions</code> requires <code>acceptBypassRisk: true</code>. Requires hub and awb on the same machine.</td></tr>
               <tr><td><code>DELETE /api/agents/:name</code></td><td>Remove an agent (admin token).</td></tr>
               <tr><td><code>GET /api/jobs</code> · <code>GET /api/jobs/:id</code></td><td>Recent jobs / one job's status + result.</td></tr>
-              <tr><td><code>POST /api/jobs</code></td><td>Submit <code>{"agent":"…","input":"…","sessionId"?}</code> — with <code>sessionId</code> the run resumes that Claude session. Answers <code>202</code> with the pending job.</td></tr>
+              <tr><td><code>POST /api/jobs</code></td><td>Submit <code>{"agent":"…","input":"…","sessionId"?}</code> — with <code>sessionId</code> the run resumes that Claude session. Answers <code>202</code> with the pending job. Local callers need no credentials; requests arriving through a tunnel (or any non-loopback source) must send <code>Authorization: Bearer &lt;API key&gt;</code> and are rate-limited to 10 jobs/min per key.</td></tr>
               <tr><td><code>POST /api/jobs/:id/result</code></td><td>awb's result callback, authenticated with the per-job <code>?token=</code>. Not meant to be called by hand.</td></tr>
+              <tr><td><code>POST /api/keys</code></td><td>Create/rotate an API key (admin token). Body: <code>{name, expiresIn?, maxUses?}</code> — <code>expiresIn</code> uses the <code>30m</code>/<code>12h</code>/<code>7d</code> format. The key is returned once, never stored.</td></tr>
+              <tr><td><code>GET /api/keys</code></td><td>List keys: owner, creation date, expiry and uses left (admin token; never the keys or hashes).</td></tr>
+              <tr><td><code>DELETE /api/keys/:name</code></td><td>Revoke an API key (admin token).</td></tr>
               <tr><td><code>GET /</code></td><td>The web UI.</td></tr>
               <tr><td><code>GET /health</code></td><td>Liveness + agent count.</td></tr>
             </tbody>
@@ -556,17 +565,94 @@ try {
         </div>
       </section>
 
+      <section id="sharing-remotely">
+        <h2>Sharing the hub remotely (phase 2, step 1)</h2>
+        <p>
+          The hub keeps binding to <code>127.0.0.1</code> — nothing new listens on the network.
+          To let someone outside the machine submit jobs, expose it with
+          <a href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/">cloudflared</a>
+          and hand each remote user an API key.
+        </p>
+
+        <h3>1. Start a tunnel</h3>
+        <p>For a throwaway URL (changes on every run, no account needed):</p>
+        <pre><code>cloudflared tunnel --url http://127.0.0.1:8892</code></pre>
+        <p>
+          cloudflared prints a <code>https://&lt;random&gt;.trycloudflare.com</code> URL — that's
+          the hub's public address. For a stable URL, create a named tunnel once
+          (<code>cloudflared tunnel login</code>, <code>cloudflared tunnel create agentmesh</code>,
+          add a DNS route) and run it with a config pointing at <code>http://127.0.0.1:8892</code>;
+          the hub side is identical.
+        </p>
+
+        <h3>2. Create a key for the remote user</h3>
+        <pre><code>mesh add-key alice
+# API key for 'alice' — save it now, it cannot be shown again: 3fc4…
+
+# Optional limits, combinable:
+mesh add-key bob --expires 12h          # stops working 12 hours from now (also 30m, 7d, …)
+mesh add-key carol --max-uses 1         # single use: exactly one accepted job
+mesh add-key dave --expires 7d --max-uses 20</code></pre>
+        <p>
+          The key is printed once; only its sha256 hash is stored. Without flags a key never
+          expires and has no usage cap. A <code>--max-uses</code> key spends one use per
+          <strong>accepted</strong> job — submissions rejected for an unknown agent, empty input
+          or rate limiting don't count — and the quota persists across hub restarts. An expired
+          or used-up key is rejected with 401, exactly like a revoked one.
+          <code>mesh list-keys</code> shows each key's status; <code>mesh rm-key alice</code>
+          revokes.
+        </p>
+        <p>
+          Prefer a UI? The hub page has an <strong>API keys</strong> section
+          (<a href="http://127.0.0.1:8892/#keys">http://127.0.0.1:8892/#keys</a>, admin token
+          required) to create keys — with the same optional expiry and max-uses limits — see each
+          key's status (active, expired or used up) and remaining uses, and revoke with one click.
+          The plaintext key is shown exactly once right after creation, with a copy button.
+        </p>
+
+        <h3>3. The remote user submits jobs</h3>
+        <p>Through the tunnel, with the key as a Bearer token:</p>
+        <pre><code>curl -s -X POST https://&lt;tunnel-url&gt;/api/jobs \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer &lt;alice's key&gt;" \
+  -d '{"agent": "translator", "input": "hola mundo"}'</code></pre>
+        <p>then polls <code>GET https://&lt;tunnel-url&gt;/api/jobs/&lt;id&gt;</code> for the result.</p>
+
+        <div class="callout">
+          <span class="tag">how it works</span>
+          <p>
+            cloudflared proxies from the hub's own machine, so tunnel traffic also arrives on the
+            loopback socket — but it always carries forwarding headers
+            (<code>cf-connecting-ip</code> / <code>x-forwarded-for</code>) that a remote client
+            cannot strip. Requests with those headers (or from a non-loopback socket) must present
+            a valid API key and are rate-limited to <strong>10 jobs per minute per key</strong>
+            (HTTP 429 beyond that). Plain local callers — the UI, the CLI, integrations on the
+            same machine — keep working with no credentials. Jobs submitted with a key record
+            their owner in <code>submittedBy</code>, visible in the jobs API.
+          </p>
+        </div>
+        <div class="callout warn">
+          <span class="tag">scope</span>
+          <p>
+            Read endpoints (<code>GET /api/jobs</code>, <code>GET /api/agents</code>, the UI) are
+            <strong>not key-gated yet</strong>: anyone with the tunnel URL can see job history and
+            results. Keys authenticate <em>submission</em> — keep the tunnel URL private
+            accordingly.
+          </p>
+        </div>
+      </section>
+
       <section id="current-limitations">
         <h2>Current limitations</h2>
-        <p>This is phase 1 of the roadmap: one machine, everything local.</p>
+        <p>Phase 1 (one machine, everything local) is complete; phase 2 is in progress — remote job submission through a tunnel already works.</p>
         <ul>
-          <li>No remote access yet: sharing the hub through a <code>cloudflared</code> tunnel with per-user API keys is phase 2, along with remote nodes (operators registering hooks behind their own tunnels) and a Docker sandbox for nodes.</li>
+          <li>Read endpoints and the UI are not key-gated yet, and there's no per-user isolation of job history. Remote nodes (operators registering hooks behind their own tunnels) and a Docker sandbox for nodes are the remaining phase-2 steps.</li>
           <li>No routing/orchestration: a job goes to the one agent you picked. Routing by capability, retries on another node and job splitting are phase 3.</li>
           <li>No <code>systemd</code>/<code>launchd</code> unit or installer: <code>mesh start</code> runs in the foreground and you have to supervise it yourself (or with <code>pm2</code>, <code>tmux</code>, <code>setsid nohup …</code>) if you want it to survive a reboot.</li>
         </ul>
       </section>
 
-      <footer>AgentMesh · phase 1 · condensed version: <a href="../README.md">README.md</a> · concept paper: <a href="../index.html">index.html</a></footer>
+      <footer>AgentMesh · phase 2 in progress · condensed version: <a href="../README.md">README.md</a> · concept paper: <a href="../index.html">index.html</a></footer>
     </div>
   </body>
 </html>
