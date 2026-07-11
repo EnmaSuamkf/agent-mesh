@@ -124,28 +124,8 @@
         font-weight: 400;
         padding: 0.3rem 0.7rem;
         cursor: pointer;
-        margin-top: 0.5rem;
       }
       .resume-btn:hover{ border-color: var(--accent); }
-      .session-chip{
-        background: none;
-        border: 1px solid var(--accent-dim);
-        border-radius: 999px;
-        color: var(--accent);
-        font-family: var(--mono);
-        font-size: 0.72rem;
-        font-weight: 400;
-        padding: 0.15rem 0.6rem;
-        cursor: pointer;
-        white-space: nowrap;
-      }
-      .session-chip:hover{ border-color: var(--accent); }
-      .session-none{
-        font-family: var(--mono);
-        font-size: 0.72rem;
-        color: var(--faint);
-        white-space: nowrap;
-      }
       .agents-msg{ font-size: 0.85rem; color: var(--muted); margin: 0.7rem 0 0; }
       .agents-msg.error{ color: var(--fail); }
       .agent-card p{ margin: 0 0 0.5rem; font-size: 0.88rem; color: var(--muted); }
@@ -272,6 +252,7 @@
       }
       td.job-id, td.job-time{ font-family: var(--mono); font-size: 0.76rem; color: var(--faint); white-space: nowrap; }
       td.job-agent{ font-family: var(--mono); font-size: 0.8rem; white-space: nowrap; }
+      td.job-harness{ font-family: var(--mono); font-size: 0.8rem; color: var(--accent); white-space: nowrap; }
       th.sortable{ cursor: pointer; user-select: none; }
       th.sortable:hover{ color: var(--accent); }
       input[type="checkbox"]{ accent-color: var(--accent); cursor: pointer; }
@@ -360,8 +341,13 @@
       }
       .job-session-row{
         display: flex;
+        flex-direction: column;
+        gap: 0.7rem;
+      }
+      .job-session-id-row{
+        display: flex;
         align-items: center;
-        gap: 0.75rem;
+        gap: 0.5rem;
         flex-wrap: wrap;
       }
       .job-session-id{
@@ -371,20 +357,59 @@
         background: var(--background);
         padding: 0.35rem 0.6rem;
         border-radius: 4px;
+        user-select: all;
+        overflow-wrap: anywhere;
       }
-      .btn-copy-session{
+      .btn-copy{
         background: transparent;
         border: 1px solid var(--border);
         color: var(--muted);
-        padding: 0.3rem 0.65rem;
+        padding: 0.3rem 0.45rem;
         border-radius: 4px;
-        font-size: 0.75rem;
+        font-size: 0.85rem;
+        line-height: 1;
         cursor: pointer;
+        flex-shrink: 0;
         transition: all 0.2s;
       }
-      .btn-copy-session:hover{
+      .btn-copy:hover{
         border-color: var(--accent);
         color: var(--accent);
+      }
+      .job-session-actions{
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+      }
+      .job-open-instructions{
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        background: var(--background);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 0.7rem 0.9rem;
+      }
+      .job-open-instructions p{
+        margin: 0;
+        font-size: 0.8rem;
+        color: var(--muted);
+      }
+      .job-open-instructions .cmd-row{
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .job-open-instructions code{
+        font-family: var(--mono);
+        font-size: 0.8rem;
+        color: var(--accent);
+        background: var(--surface-2);
+        border-radius: 4px;
+        padding: 0.35rem 0.6rem;
+        overflow-wrap: anywhere;
+        user-select: all;
       }
       .empty{ color: var(--faint); font-size: 0.9rem; padding: 0.8rem; }
 
@@ -567,7 +592,7 @@
                 <th>Job</th>
                 <th class="sortable" data-sort="agent">Agent</th>
                 <th class="sortable" data-sort="status">Status</th>
-                <th class="sortable" data-sort="sessionId">Session</th>
+                <th class="sortable" data-sort="harness">Harness</th>
                 <th class="sortable" data-sort="createdAt">Created</th>
                 <th>Task / result</th>
               </tr>
@@ -687,6 +712,27 @@
           : `${d.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit" })} ${hm}`;
       }
 
+      // Small icon button that copies `text` and flashes a checkmark.
+      function copyButton(text, title) {
+        const btn = el("button", "btn-copy", "⧉");
+        btn.type = "button";
+        btn.title = title;
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          navigator.clipboard.writeText(text).then(() => {
+            btn.textContent = "✓";
+            setTimeout(() => (btn.textContent = "⧉"), 2000);
+          });
+        });
+        return btn;
+      }
+
+      // How to reopen a session on each harness awb can spawn.
+      function harnessResumeCommand(harness, sessionId) {
+        const commands = { claude: `claude --resume ${sessionId}` };
+        return commands[harness] ?? null;
+      }
+
       function updateDeleteButton() {
         const btn = $("delete-jobs-btn");
         if (selectedJobs.size > 0) {
@@ -755,25 +801,16 @@
           statusTd.appendChild(statusSpan);
           tr.appendChild(statusTd);
 
-          const sessTd = el("td");
-          if (job.sessionId) {
-            const chip = el("button", "session-chip", `${job.resumeSessionId ? "↻ " : ""}${job.sessionId.slice(0, 8)}`);
-            chip.type = "button";
-            chip.title = `Session ID: ${job.sessionId}${job.resumeSessionId ? ` (continuation of ${job.resumeSessionId})` : ""}. Click to continue this conversation.`;
-            chip.addEventListener("click", () => continueSession(job));
-            sessTd.appendChild(chip);
+          const harnessTd = el("td", "job-harness");
+          if (job.harness) {
+            harnessTd.textContent = job.harness;
+            harnessTd.title = `Harness: this agent's jobs run on '${job.harness}'`;
           } else {
-            const none = el("span", "session-none",
-              job.status === "pending" || job.status === "running" ? "…" : "stateless");
-            if (job.status === "pending" || job.status === "running") {
-              none.title = "Session will be available when job completes";
-            } else {
-              none.title = "No session (stateless run) — this job can't be continued";
-            }
-            none.style.cursor = "help";
-            sessTd.appendChild(none);
+            harnessTd.textContent = "—";
+            harnessTd.title = "Harness unknown (agent removed or hook not on this machine's broker)";
           }
-          tr.appendChild(sessTd);
+          harnessTd.style.cursor = "help";
+          tr.appendChild(harnessTd);
           
           const timeTd = el("td", "job-time", fmtTime(job.createdAt));
           timeTd.title = `Created at: ${new Date(job.createdAt).toLocaleString()}`;
@@ -856,29 +893,41 @@
             const sessionTitle = el("div", "job-section-title");
             sessionTitle.textContent = "🔗 Session";
             const sessionRow = el("div", "job-session-row");
-            
-            const sessionId = el("span", "job-session-id", job.sessionId.slice(0, 8));
-            sessionId.title = job.sessionId;
-            sessionRow.appendChild(sessionId);
-            
-            const copyBtn = el("button", "btn-copy-session", "Copy full ID");
-            copyBtn.type = "button";
-            copyBtn.addEventListener("click", (e) => {
-              e.stopPropagation();
-              navigator.clipboard.writeText(job.sessionId).then(() => {
-                copyBtn.textContent = "✓ Copied!";
-                setTimeout(() => copyBtn.textContent = "Copy full ID", 2000);
-              });
-            });
-            sessionRow.appendChild(copyBtn);
-            
+
+            const idRow = el("div", "job-session-id-row");
+            const sessionId = el("code", "job-session-id", job.sessionId);
+            idRow.appendChild(sessionId);
+            idRow.appendChild(copyButton(job.sessionId, "Copy session ID"));
+            sessionRow.appendChild(idRow);
+
             if (job.status === "done") {
-              const cont = el("button", "resume-btn", "Continue conversation →");
+              const actions = el("div", "job-session-actions");
+              const cont = el("button", "resume-btn", "Send new job to same agent →");
               cont.type = "button";
               cont.addEventListener("click", () => continueSession(job));
-              sessionRow.appendChild(cont);
+              actions.appendChild(cont);
+              sessionRow.appendChild(actions);
             }
-            
+
+            // How to reopen this conversation locally, always visible.
+            const resumeCmd = harnessResumeCommand(job.harness, job.sessionId);
+            if (resumeCmd) {
+              const instructions = el("div", "job-open-instructions");
+              const hint = document.createElement("p");
+              hint.textContent = job.workdir
+                ? `Run this in a terminal — or open ${job.workdir} in your IDE and run it in the integrated terminal:`
+                : "Run this in a terminal, from the agent's working directory:";
+              instructions.appendChild(hint);
+              const cmdRow = el("div", "cmd-row");
+              const command = job.workdir
+                ? `cd '${job.workdir}' && ${resumeCmd}`
+                : resumeCmd;
+              cmdRow.appendChild(el("code", null, command));
+              cmdRow.appendChild(copyButton(command, "Copy command"));
+              instructions.appendChild(cmdRow);
+              sessionRow.appendChild(instructions);
+            }
+
             sessionSection.appendChild(sessionTitle);
             sessionSection.appendChild(sessionRow);
 
@@ -1024,7 +1073,11 @@
         try {
           const [agentsData, jobsData] = await Promise.all([api("/api/agents"), api("/api/jobs")]);
           renderAgents(agentsData.agents);
-          lastJobs = jobsData.jobs;
+          const agentByName = new Map(agentsData.agents.map((a) => [a.name, a]));
+          lastJobs = jobsData.jobs.map((job) => {
+            const agent = agentByName.get(job.agent);
+            return { ...job, harness: agent?.harness ?? null, workdir: agent?.workdir ?? null };
+          });
           renderJobs(sortedJobs());
           $("hub-status").textContent = "hub online";
           $("hub-status").classList.remove("offline");
