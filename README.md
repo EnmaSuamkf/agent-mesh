@@ -130,8 +130,8 @@ with the phase-2 API keys.
 | `mesh list` | Lists published agents. |
 | `mesh submit <agent> [--session-id <id>] <input...>` | Submits a job and waits for the result. With `--session-id` the agent resumes that Claude session; the id to continue from is printed with every finished job. |
 | `mesh jobs` | Shows recent jobs and their status. |
-| `mesh add-key <name>` | Creates (or rotates) an API key for a remote user. The key is printed once; only its sha256 hash is stored. |
-| `mesh list-keys` | Lists API key owners and creation dates (never the keys). |
+| `mesh add-key <name> [--expires <dur>] [--max-uses <N>]` | Creates (or rotates) an API key for a remote user. The key is printed once; only its sha256 hash is stored. `--expires` takes `<n>m`/`<n>h`/`<n>d` (e.g. `30m`, `12h`, `7d`); `--max-uses` caps how many remote jobs the key can submit (`1` = single use). Both optional and combinable; without them the key never expires and is unlimited. |
+| `mesh list-keys` | Lists API keys: owner, creation date, expiry (or `never`) and uses left (or `unlimited`) — never the keys. |
 | `mesh rm-key <name>` | Revokes an API key. |
 
 ## API
@@ -144,8 +144,8 @@ with the phase-2 API keys.
 | `DELETE /api/agents/:name` | Remove an agent (admin token). |
 | `GET /api/jobs` · `GET /api/jobs/:id` | Job list / job status + result. |
 | `POST /api/jobs` | Submit `{ "agent": "...", "input": "...", "sessionId"? }` — with `sessionId` the run resumes that Claude session. Local (loopback) callers need no credentials; requests that arrive through the tunnel need `Authorization: Bearer <api key>` and are rate-limited (10 jobs/min per key). |
-| `POST /api/keys` | Create/rotate an API key: `{ "name": "..." }` (admin token). The key is returned once, never stored. |
-| `GET /api/keys` | List key owners and creation dates (admin token). |
+| `POST /api/keys` | Create/rotate an API key: `{ "name": "...", "expiresIn"?, "maxUses"? }` (admin token). `expiresIn` uses the same `30m`/`12h`/`7d` format; `maxUses` is a positive integer. The key is returned once, never stored. |
+| `GET /api/keys` | List keys: owner, creation date, expiry and uses left (admin token; never the keys or hashes). |
 | `DELETE /api/keys/:name` | Revoke an API key (admin token). |
 | `POST /api/jobs/:id/result` | awb's result callback (per-job `?token=`). |
 | `GET /` | The web UI. |
@@ -224,10 +224,20 @@ For a stable URL, create a named tunnel once (`cloudflared tunnel login`,
 ```bash
 mesh add-key alice
 # API key for 'alice' — save it now, it cannot be shown again: 3fc4…
+
+# Optional limits, combinable:
+mesh add-key bob --expires 12h          # stops working 12 hours from now (also 30m, 7d, …)
+mesh add-key carol --max-uses 1         # single use: exactly one accepted job
+mesh add-key dave --expires 7d --max-uses 20
 ```
 
-The key is printed once; only its sha256 hash is stored. `mesh list-keys` shows owners,
-`mesh rm-key alice` revokes. Over HTTP the same operations are `POST /api/keys`,
+The key is printed once; only its sha256 hash is stored. Without flags a key never expires
+and has no usage cap. A `--max-uses` key spends one use per **accepted** job — submissions
+rejected for an unknown agent, empty input or rate limiting don't count — and the quota
+persists across hub restarts. An expired or used-up key is rejected with 401, exactly like a
+revoked one. `mesh list-keys` shows each key's owner, expiry (or `never`) and uses left (or
+`unlimited`); `mesh rm-key alice` revokes. Over HTTP the same operations are `POST /api/keys`
+(body accepts optional `expiresIn` — same `30m`/`12h`/`7d` format — and `maxUses`),
 `GET /api/keys` and `DELETE /api/keys/:name`, all admin-token gated.
 
 **3. The remote user submits jobs** through the tunnel with the key as a Bearer token:

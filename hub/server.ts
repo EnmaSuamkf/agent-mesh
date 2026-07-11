@@ -34,6 +34,7 @@ import type { HubConfig } from "./config.ts";
 import type { Agent, Job } from "./db.ts";
 import {
 	completeJob,
+	consumeApiKeyUse,
 	createApiKey,
 	deleteAgent,
 	deleteApiKey,
@@ -47,6 +48,7 @@ import {
 	listAgents,
 	listApiKeys,
 	listJobs,
+	parseDurationMs,
 	saveAgent,
 } from "./db.ts";
 import { dispatchJob, type Logger } from "./runner.ts";
@@ -407,6 +409,18 @@ function handleRequest(cfg: HubConfig, log: Logger, req: http.IncomingMessage, r
 						return;
 					}
 				}
+				// Metered keys spend a use only for a job that is actually accepted:
+				// every rejection above (unknown agent, empty input, bad sessionId)
+				// returns before this point. The guarded UPDATE inside
+				// consumeApiKeyUse is atomic, so concurrent submissions can't
+				// overspend the quota — and a key revoked since auth fails here too.
+				if (submittedBy !== undefined && !consumeApiKeyUse(submittedBy)) {
+					sendJson(res, 401, {
+						error: "unauthorized",
+						hint: "this API key has no uses left",
+					});
+					return;
+				}
 				const job = insertJob(agent.name, input, resumeSessionId, submittedBy);
 				// Answer right away with the pending job; dispatch runs in the
 				// background and the caller polls GET /api/jobs/:id.
@@ -435,11 +449,30 @@ function handleRequest(cfg: HubConfig, log: Logger, req: http.IncomingMessage, r
 					sendJson(res, 400, { error: "name is required (allowed: A-Z a-z 0-9 . _ -)" });
 					return;
 				}
-				const created = createApiKey(name);
+				let expiresAt: string | null = null;
+				if (body.expiresIn != null) {
+					const ms = typeof body.expiresIn === "string" ? parseDurationMs(body.expiresIn) : null;
+					if (ms == null) {
+						sendJson(res, 400, { error: "invalid expiresIn — use <number><m|h|d>, e.g. 30m, 12h, 7d" });
+						return;
+					}
+					expiresAt = new Date(Date.now() + ms).toISOString();
+				}
+				let maxUses: number | null = null;
+				if (body.maxUses != null) {
+					if (typeof body.maxUses !== "number" || !Number.isInteger(body.maxUses) || body.maxUses <= 0) {
+						sendJson(res, 400, { error: "invalid maxUses — must be a positive integer" });
+						return;
+					}
+					maxUses = body.maxUses;
+				}
+				const created = createApiKey(name, { expiresAt, maxUses });
 				// The key itself is never logged and never retrievable again.
 				log(`api key '${name}' created`);
 				sendJson(res, 200, {
 					...created,
+					expiresAt,
+					maxUses,
 					note: "save this key now — only its hash is stored, it cannot be shown again",
 				});
 			});

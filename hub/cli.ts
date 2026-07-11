@@ -12,7 +12,17 @@
  */
 import { inspectLocalHook } from "./awb.ts";
 import { loadConfig } from "./config.ts";
-import { type Agent, createApiKey, deleteAgent, deleteApiKey, getAgent, listAgents, listApiKeys, saveAgent } from "./db.ts";
+import {
+	type Agent,
+	createApiKey,
+	deleteAgent,
+	deleteApiKey,
+	getAgent,
+	listAgents,
+	listApiKeys,
+	parseDurationMs,
+	saveAgent,
+} from "./db.ts";
 import { startHub } from "./daemon.ts";
 
 const VALID_NAME = /^[A-Za-z0-9._-]+$/;
@@ -39,10 +49,15 @@ Commands:
                                           every finished job prints/stores the session
                                           id to continue from)
   jobs                                   Show recent jobs
-  add-key <name>                         Create (or rotate) an API key for a remote
+  add-key <name> [options]               Create (or rotate) an API key for a remote
                                           user — the key is printed once, only its
                                           hash is stored
-  list-keys                              List API key owners (never the keys)
+    --expires <dur>                      Key expires after <dur>: <n>m, <n>h or <n>d
+                                          (e.g. 30m, 12h, 7d); default: never
+    --max-uses <N>                       Accepted remote jobs before the key stops
+                                          working (1 = single use); default: unlimited
+  list-keys                              List API keys: owner, expiry and uses left
+                                          (never the keys)
   rm-key <name>                          Revoke an API key
 `);
 }
@@ -156,8 +171,31 @@ async function main(): Promise<void> {
 			process.exitCode = 1;
 			return;
 		}
-		const { key } = createApiKey(name);
+		const expiresSpec = flagValue(rest, "--expires");
+		let expiresAt: string | null = null;
+		if (expiresSpec !== undefined) {
+			const ms = parseDurationMs(expiresSpec);
+			if (ms == null) {
+				console.error(`Invalid --expires '${expiresSpec}'. Use <number><m|h|d>, e.g. 30m, 12h, 7d.`);
+				process.exitCode = 1;
+				return;
+			}
+			expiresAt = new Date(Date.now() + ms).toISOString();
+		}
+		const maxUsesSpec = flagValue(rest, "--max-uses");
+		let maxUses: number | null = null;
+		if (maxUsesSpec !== undefined) {
+			if (!/^[0-9]+$/.test(maxUsesSpec) || Number(maxUsesSpec) <= 0) {
+				console.error(`Invalid --max-uses '${maxUsesSpec}'. Must be a positive integer (1 = single use).`);
+				process.exitCode = 1;
+				return;
+			}
+			maxUses = Number(maxUsesSpec);
+		}
+		const { key } = createApiKey(name, { expiresAt, maxUses });
 		console.log(`API key for '${name}' — save it now, it cannot be shown again (only its hash is stored):\n\n  ${key}\n`);
+		console.log(`Expires:   ${expiresAt ?? "never"}`);
+		console.log(`Max uses:  ${maxUses ?? "unlimited"}`);
 		console.log(`The user submits jobs with:  Authorization: Bearer ${key.slice(0, 6)}…`);
 		return;
 	}
@@ -168,7 +206,11 @@ async function main(): Promise<void> {
 			console.log("No API keys. Use `mesh add-key <name>`.");
 			return;
 		}
-		for (const k of keys) console.log(`${k.name}  created=${k.createdAt}`);
+		for (const k of keys) {
+			console.log(
+				`${k.name}  created=${k.createdAt}  expires=${k.expiresAt ?? "never"}  uses-left=${k.usesLeft ?? "unlimited"}`,
+			);
+		}
 		return;
 	}
 
