@@ -25,6 +25,7 @@ import * as path from "node:path";
 import {
 	createAwbHook,
 	HookExistsError,
+	hookRuntime,
 	inspectLocalHook,
 	PUBLISHABLE_PERMISSION_MODES,
 	type PublishablePermissionMode,
@@ -62,6 +63,7 @@ function isAdmin(cfg: HubConfig, headers: http.IncomingHttpHeaders): boolean {
 
 /** What the public API exposes about an agent — never the secret or hook URL. */
 function publicAgent(agent: Agent): Record<string, unknown> {
+	const runtime = hookRuntime(agent.hookUrl);
 	return {
 		name: agent.name,
 		description: agent.description,
@@ -69,6 +71,8 @@ function publicAgent(agent: Agent): Record<string, unknown> {
 		tags: agent.tags,
 		enabled: agent.enabled,
 		createdAt: agent.createdAt,
+		harness: runtime.harness,
+		workdir: runtime.workdir,
 	};
 }
 

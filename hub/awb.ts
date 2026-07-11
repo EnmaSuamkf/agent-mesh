@@ -81,6 +81,34 @@ export function inspectLocalHook(hookUrl: string): LocalHookInfo {
 	return { local: true, found: true, name, hasWorkdir: typeof hook.workdir === "string" && hook.workdir !== "" };
 }
 
+export interface HookRuntime {
+	/** Harness the hook spawns, from its `consumers` list (`spawn:claude` → "claude"). */
+	harness: string | null;
+	/** Directory the harness runs in — where its sessions can be resumed from. */
+	workdir: string | null;
+}
+
+/**
+ * How the hook runs its jobs. Only answerable for hooks on this machine's
+ * broker; remote hooks (phase 2) come back all-null. The workdir is a local
+ * path, which is fine to expose while the hub is local-only.
+ */
+export function hookRuntime(hookUrl: string): HookRuntime {
+	const info = inspectLocalHook(hookUrl);
+	if (!info.local || !info.found || !info.name) return { harness: null, workdir: null };
+	const hook = loadAwbConfig().hooks[info.name];
+	const consumers = Array.isArray(hook?.consumers) ? (hook.consumers as unknown[]) : [];
+	let harness: string | null = null;
+	for (const consumer of consumers) {
+		if (typeof consumer === "string" && consumer.startsWith("spawn:")) {
+			harness = consumer.slice("spawn:".length);
+			break;
+		}
+	}
+	const workdir = typeof hook?.workdir === "string" && hook.workdir !== "" ? hook.workdir : null;
+	return { harness, workdir };
+}
+
 /**
  * Permission modes the hub is willing to write into a hook — the full awb
  * list. `bypassPermissions` lets anyone who can submit a job run arbitrary
