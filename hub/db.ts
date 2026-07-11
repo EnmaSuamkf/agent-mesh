@@ -41,6 +41,8 @@ export interface Job {
 	resumeSessionId: string | null;
 	/** Per-job token that authenticates awb's POST to /api/jobs/:id/result. */
 	callbackToken: string;
+	/** API-key owner that submitted the job; null for local (loopback) submissions. */
+	submittedBy: string | null;
 	createdAt: string;
 	finishedAt: string | null;
 }
@@ -75,16 +77,31 @@ function open(): DatabaseSync {
 			session_id TEXT,
 			resume_session_id TEXT,
 			callback_token TEXT NOT NULL,
+			submitted_by TEXT,
 			created_at TEXT NOT NULL,
 			finished_at TEXT
 		);
+		CREATE TABLE IF NOT EXISTS api_keys (
+			name TEXT PRIMARY KEY,
+			key_hash TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			expires_at TEXT,
+			uses_left INTEGER
+		);
 	`);
-	// Migration for databases created before resume support; ALTER fails
-	// harmlessly once the column exists.
-	try {
-		db.exec("ALTER TABLE jobs ADD COLUMN resume_session_id TEXT;");
-	} catch {
-		// Column already there.
+	// Migrations for databases created before each column existed; every
+	// ALTER fails harmlessly once its column is there.
+	for (const migration of [
+		"ALTER TABLE jobs ADD COLUMN resume_session_id TEXT;",
+		"ALTER TABLE jobs ADD COLUMN submitted_by TEXT;",
+		"ALTER TABLE api_keys ADD COLUMN expires_at TEXT;",
+		"ALTER TABLE api_keys ADD COLUMN uses_left INTEGER;",
+	]) {
+		try {
+			db.exec(migration);
+		} catch {
+			// Column already there.
+		}
 	}
 	return db;
 }
@@ -150,12 +167,13 @@ function rowToJob(row: Record<string, unknown>): Job {
 		sessionId: row.session_id == null ? null : String(row.session_id),
 		resumeSessionId: row.resume_session_id == null ? null : String(row.resume_session_id),
 		callbackToken: String(row.callback_token),
+		submittedBy: row.submitted_by == null ? null : String(row.submitted_by),
 		createdAt: String(row.created_at),
 		finishedAt: row.finished_at == null ? null : String(row.finished_at),
 	};
 }
 
-export function insertJob(agent: string, input: string, resumeSessionId?: string): Job {
+export function insertJob(agent: string, input: string, resumeSessionId?: string, submittedBy?: string): Job {
 	const job: Job = {
 		id: crypto.randomUUID(),
 		agent,
@@ -166,14 +184,15 @@ export function insertJob(agent: string, input: string, resumeSessionId?: string
 		sessionId: null,
 		resumeSessionId: resumeSessionId ?? null,
 		callbackToken: crypto.randomBytes(24).toString("hex"),
+		submittedBy: submittedBy ?? null,
 		createdAt: new Date().toISOString(),
 		finishedAt: null,
 	};
 	open()
 		.prepare(
-			"INSERT INTO jobs (id, agent, input, status, resume_session_id, callback_token, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			"INSERT INTO jobs (id, agent, input, status, resume_session_id, callback_token, submitted_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 		)
-		.run(job.id, job.agent, job.input, job.status, job.resumeSessionId, job.callbackToken, job.createdAt);
+		.run(job.id, job.agent, job.input, job.status, job.resumeSessionId, job.callbackToken, job.submittedBy, job.createdAt);
 	return job;
 }
 
@@ -228,4 +247,102 @@ export function deleteJobs(ids: string[]): number {
 	if (ids.length === 0) return 0;
 	const placeholders = ids.map(() => "?").join(",");
 	return Number(open().prepare(`DELETE FROM jobs WHERE id IN (${placeholders})`).run(...ids).changes);
+}
+
+// --- API keys (phase 2: remote job submission through the tunnel) ---
+
+export interface ApiKeyInfo {
+	name: string;
+	createdAt: string;
+	/** ISO timestamp after which the key stops working; null = never expires. */
+	expiresAt: string | null;
+	/** Accepted remote jobs the key has left; null = unlimited. */
+	usesLeft: number | null;
+}
+
+function hashApiKey(key: string): string {
+	return crypto.createHash("sha256").update(key).digest("hex");
+}
+
+/** Parses a duration like "30m", "12h" or "7d" into milliseconds; null when malformed. */
+export function parseDurationMs(spec: string): number | null {
+	const match = /^(\d+)([mhd])$/.exec(spec.trim());
+	if (!match) return null;
+	const amount = Number(match[1]);
+	if (amount <= 0) return null;
+	const unitMs = { m: 60_000, h: 3_600_000, d: 86_400_000 }[match[2] as "m" | "h" | "d"];
+	return amount * unitMs;
+}
+
+/**
+ * Creates (or rotates, if the name exists) an API key. The plaintext key is
+ * returned exactly once — only its sha256 hash is stored, so it can never be
+ * shown again. Rotating also resets the key's limits to the ones given here
+ * (both null = unlimited, the default).
+ */
+export function createApiKey(
+	name: string,
+	limits: { expiresAt?: string | null; maxUses?: number | null } = {},
+): { name: string; key: string; createdAt: string } {
+	const key = crypto.randomBytes(24).toString("hex");
+	const createdAt = new Date().toISOString();
+	open()
+		.prepare(
+			`INSERT INTO api_keys (name, key_hash, created_at, expires_at, uses_left) VALUES (?, ?, ?, ?, ?)
+			 ON CONFLICT(name) DO UPDATE SET key_hash = excluded.key_hash, created_at = excluded.created_at,
+			   expires_at = excluded.expires_at, uses_left = excluded.uses_left`,
+		)
+		.run(name, hashApiKey(key), createdAt, limits.expiresAt ?? null, limits.maxUses ?? null);
+	return { name, key, createdAt };
+}
+
+export function listApiKeys(): ApiKeyInfo[] {
+	const rows = open().prepare("SELECT name, created_at, expires_at, uses_left FROM api_keys ORDER BY name").all();
+	return (rows as Record<string, unknown>[]).map((row) => ({
+		name: String(row.name),
+		createdAt: String(row.created_at),
+		expiresAt: row.expires_at == null ? null : String(row.expires_at),
+		usesLeft: row.uses_left == null ? null : Number(row.uses_left),
+	}));
+}
+
+export function deleteApiKey(name: string): boolean {
+	return open().prepare("DELETE FROM api_keys WHERE name = ?").run(name).changes > 0;
+}
+
+/**
+ * Resolves a presented API key to its owner, or null. The lookup compares
+ * sha256 hashes; even if that comparison isn't constant-time, its timing
+ * leaks nothing useful about the key — an attacker can't choose sha256
+ * preimages, so matching the stored hash byte-by-byte is not exploitable.
+ */
+export function findApiKeyOwner(key: string): string | null {
+	if (!key) return null;
+	const row = open()
+		.prepare("SELECT name, expires_at, uses_left FROM api_keys WHERE key_hash = ?")
+		.get(hashApiKey(key)) as Record<string, unknown> | undefined;
+	if (!row) return null;
+	// An expired or used-up key behaves exactly like a revoked one: no owner,
+	// so the caller answers 401. ISO strings compare correctly as strings.
+	if (row.expires_at != null && String(row.expires_at) <= new Date().toISOString()) return null;
+	if (row.uses_left != null && Number(row.uses_left) <= 0) return null;
+	return String(row.name);
+}
+
+/**
+ * Spends one use of a metered key; a key with uses_left NULL is unlimited and
+ * passes untouched. The guarded single-statement UPDATE is what makes the
+ * quota race-free: two concurrent submissions can never both take the last
+ * use. Returns false when nothing was spendable (no uses left, or the key was
+ * revoked since auth) — the caller must reject the job.
+ */
+export function consumeApiKeyUse(name: string): boolean {
+	return (
+		open()
+			.prepare(
+				`UPDATE api_keys SET uses_left = CASE WHEN uses_left IS NULL THEN NULL ELSE uses_left - 1 END
+				 WHERE name = ? AND (uses_left IS NULL OR uses_left > 0)`,
+			)
+			.run(name).changes > 0
+	);
 }

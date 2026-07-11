@@ -130,6 +130,9 @@ with the phase-2 API keys.
 | `mesh list` | Lists published agents. |
 | `mesh submit <agent> [--session-id <id>] <input...>` | Submits a job and waits for the result. With `--session-id` the agent resumes that Claude session; the id to continue from is printed with every finished job. |
 | `mesh jobs` | Shows recent jobs and their status. |
+| `mesh add-key <name> [--expires <dur>] [--max-uses <N>]` | Creates (or rotates) an API key for a remote user. The key is printed once; only its sha256 hash is stored. `--expires` takes `<n>m`/`<n>h`/`<n>d` (e.g. `30m`, `12h`, `7d`); `--max-uses` caps how many remote jobs the key can submit (`1` = single use). Both optional and combinable; without them the key never expires and is unlimited. |
+| `mesh list-keys` | Lists API keys: owner, creation date, expiry (or `never`) and uses left (or `unlimited`) — never the keys. |
+| `mesh rm-key <name>` | Revokes an API key. |
 
 ## API
 
@@ -140,7 +143,10 @@ with the phase-2 API keys.
 | `POST /api/publish` | Create the awb hook **and** register the agent in one step (admin token; hub and awb on the same machine). Body: `{name, description?, owner?, tags?, workdir?, promptTemplate?, secret?, permissionMode?, acceptBypassRisk?}` — `permissionMode` accepts all of awb's modes; `bypassPermissions` is only accepted together with `acceptBypassRisk: true` (it lets job submitters run arbitrary commands on the operator's machine). |
 | `DELETE /api/agents/:name` | Remove an agent (admin token). |
 | `GET /api/jobs` · `GET /api/jobs/:id` | Job list / job status + result. |
-| `POST /api/jobs` | Submit `{ "agent": "...", "input": "...", "sessionId"? }` — with `sessionId` the run resumes that Claude session. |
+| `POST /api/jobs` | Submit `{ "agent": "...", "input": "...", "sessionId"? }` — with `sessionId` the run resumes that Claude session. Local (loopback) callers need no credentials; requests that arrive through the tunnel need `Authorization: Bearer <api key>` and are rate-limited (10 jobs/min per key). |
+| `POST /api/keys` | Create/rotate an API key: `{ "name": "...", "expiresIn"?, "maxUses"? }` (admin token). `expiresIn` uses the same `30m`/`12h`/`7d` format; `maxUses` is a positive integer. The key is returned once, never stored. |
+| `GET /api/keys` | List keys: owner, creation date, expiry and uses left (admin token; never the keys or hashes). |
+| `DELETE /api/keys/:name` | Revoke an API key (admin token). |
 | `POST /api/jobs/:id/result` | awb's result callback (per-job `?token=`). |
 | `GET /` | The web UI. |
 | `GET /health` | Liveness + agent count. |
@@ -196,9 +202,78 @@ unterminated command.
 > `calledTools: []` in the execution record, and the tool will look broken even though it
 > works. Lower the agent's temperature (≈ 0.2) and/or use a model that tool-calls reliably.
 
+## Sharing the hub with a tunnel (phase 2, step 1)
+
+The hub keeps binding to `127.0.0.1` — nothing new listens on the network. To let someone
+outside the machine submit jobs, expose it with [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)
+and hand each remote user an API key.
+
+**1. Start a tunnel.** For a throwaway URL (changes on every run, no account needed):
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:8892
+```
+
+cloudflared prints a `https://<random>.trycloudflare.com` URL — that's the hub's public address.
+For a stable URL, create a named tunnel once (`cloudflared tunnel login`,
+`cloudflared tunnel create agentmesh`, add a DNS route) and run it with a config pointing at
+`http://127.0.0.1:8892` — see Cloudflare's docs; the hub side is identical.
+
+**2. Create a key for the remote user** (on the hub machine):
+
+```bash
+mesh add-key alice
+# API key for 'alice' — save it now, it cannot be shown again: 3fc4…
+
+# Optional limits, combinable:
+mesh add-key bob --expires 12h          # stops working 12 hours from now (also 30m, 7d, …)
+mesh add-key carol --max-uses 1         # single use: exactly one accepted job
+mesh add-key dave --expires 7d --max-uses 20
+```
+
+The key is printed once; only its sha256 hash is stored. Without flags a key never expires
+and has no usage cap. A `--max-uses` key spends one use per **accepted** job — submissions
+rejected for an unknown agent, empty input or rate limiting don't count — and the quota
+persists across hub restarts. An expired or used-up key is rejected with 401, exactly like a
+revoked one. `mesh list-keys` shows each key's owner, expiry (or `never`) and uses left (or
+`unlimited`); `mesh rm-key alice` revokes. Over HTTP the same operations are `POST /api/keys`
+(body accepts optional `expiresIn` — same `30m`/`12h`/`7d` format — and `maxUses`),
+`GET /api/keys` and `DELETE /api/keys/:name`, all admin-token gated.
+
+Prefer a UI? The hub page has an **API keys** section (open
+[http://127.0.0.1:8892/#keys](http://127.0.0.1:8892/#keys), admin token required) to create
+keys — with the same optional expiry and max-uses limits — see each key's status (active,
+expired or used up) and remaining uses, and revoke with one click. The plaintext key is shown
+exactly once right after creation, with a copy button.
+
+**3. The remote user submits jobs** through the tunnel with the key as a Bearer token:
+
+```bash
+curl -s -X POST https://<tunnel-url>/api/jobs \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <alice's key>" \
+  -d '{"agent": "translator", "input": "hola mundo"}'
+```
+
+and polls `GET https://<tunnel-url>/api/jobs/<id>` for the result.
+
+How the hub tells local from remote: cloudflared proxies from this same machine, so tunnel
+traffic also arrives on the loopback socket — but it always carries forwarding headers
+(`cf-connecting-ip` / `x-forwarded-for`) that a remote client cannot strip. Requests with those
+headers (or from a non-loopback socket) must present a valid API key and are rate-limited to
+**10 jobs per minute per key** (HTTP 429 beyond that). Plain local callers — the UI, the CLI,
+the loop listeners — keep working with no credentials, exactly as before. Jobs submitted with a
+key record their owner in `submittedBy` (visible in the jobs API).
+
+Known phase-boundary caveat: read endpoints (`GET /api/jobs`, `GET /api/agents`, the UI) are
+not key-gated yet, so anyone with the tunnel URL can see job history and results. That matches
+the plan's scope for this step (keys authenticate *submission*); tighten or keep the tunnel URL
+private accordingly.
+
 ## Roadmap
 
-- **Phase 2 — sharing**: expose the hub through a `cloudflared` tunnel, per-user API keys,
-  remote nodes (operators register hooks behind their own tunnels), Docker sandbox for nodes.
+- **Phase 2 — sharing**: ~~expose the hub through a `cloudflared` tunnel, per-user API keys~~
+  (done — see above), remote nodes (operators register hooks behind their own tunnels), Docker
+  sandbox for nodes.
 - **Phase 3 — orchestration**: routing by capability/tags, retries on another node, job splitting.
 - **Phase 4 — ledger/points**: see the concept paper.
