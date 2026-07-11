@@ -34,20 +34,58 @@ import type { HubConfig } from "./config.ts";
 import type { Agent, Job } from "./db.ts";
 import {
 	completeJob,
+	createApiKey,
 	deleteAgent,
+	deleteApiKey,
 	deleteJob,
 	deleteJobs,
 	expireStaleJobs,
+	findApiKeyOwner,
 	getAgent,
 	getJob,
 	insertJob,
 	listAgents,
+	listApiKeys,
 	listJobs,
 	saveAgent,
 } from "./db.ts";
 import { dispatchJob, type Logger } from "./runner.ts";
 
 const UI_FILE = path.join(import.meta.dirname, "ui", "index.html");
+
+// Basic per-key rate limit for remote submissions (phase 2): sliding window,
+// in memory — restarting the hub resets it, which is fine at this scale.
+const RATE_LIMIT_MAX_JOBS = 10;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const recentSubmissions = new Map<string, number[]>();
+
+/** Records one submission for `keyName`; false when the key is over its budget. */
+function underRateLimit(keyName: string): boolean {
+	const now = Date.now();
+	const recent = (recentSubmissions.get(keyName) ?? []).filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
+	if (recent.length >= RATE_LIMIT_MAX_JOBS) {
+		recentSubmissions.set(keyName, recent);
+		return false;
+	}
+	recent.push(now);
+	recentSubmissions.set(keyName, recent);
+	return true;
+}
+
+/**
+ * Remote = the request came in through the tunnel (or any non-loopback
+ * socket). cloudflared proxies from this same machine, so the socket address
+ * alone can't tell tunnel traffic apart — but cloudflared always adds
+ * forwarding headers (cf-connecting-ip / x-forwarded-for) that a remote
+ * client cannot strip. A local caller faking those headers only subjects
+ * itself to the stricter remote rules, so they can't be used to bypass auth.
+ */
+function isRemoteRequest(req: http.IncomingMessage): boolean {
+	const addr = req.socket.remoteAddress ?? "";
+	const loopback = addr === "127.0.0.1" || addr === "::1" || addr === "::ffff:127.0.0.1";
+	if (!loopback) return true;
+	return req.headers["cf-connecting-ip"] != null || req.headers["x-forwarded-for"] != null;
+}
 
 function timingSafeEqualStr(a: string, b: string): boolean {
 	const ab = Buffer.from(a);
@@ -56,8 +94,12 @@ function timingSafeEqualStr(a: string, b: string): boolean {
 	return crypto.timingSafeEqual(ab, bb);
 }
 
+function bearerToken(headers: http.IncomingHttpHeaders): string {
+	return String(headers.authorization ?? "").replace(/^Bearer\s+/i, "");
+}
+
 function isAdmin(cfg: HubConfig, headers: http.IncomingHttpHeaders): boolean {
-	const provided = String(headers.authorization ?? "").replace(/^Bearer\s+/i, "");
+	const provided = bearerToken(headers);
 	return provided.length > 0 && timingSafeEqualStr(provided, cfg.adminToken);
 }
 
@@ -87,6 +129,7 @@ function publicJob(job: Job): Record<string, unknown> {
 		error: job.error,
 		sessionId: job.sessionId,
 		resumeSessionId: job.resumeSessionId,
+		submittedBy: job.submittedBy,
 		createdAt: job.createdAt,
 		finishedAt: job.finishedAt,
 	};
@@ -305,6 +348,28 @@ export function createServer(cfg: HubConfig, log: Logger): http.Server {
 				return;
 			}
 			if (req.method === "POST") {
+				// Local (loopback) submissions keep working without credentials:
+				// the UI, the CLI and the loop listeners all live on this machine.
+				// Anything that came through the tunnel must present an API key.
+				let submittedBy: string | undefined;
+				if (isRemoteRequest(req)) {
+					const owner = findApiKeyOwner(bearerToken(req.headers));
+					if (!owner) {
+						sendJson(res, 401, {
+							error: "unauthorized",
+							hint: "remote job submission requires a valid API key: Authorization: Bearer <key>",
+						});
+						return;
+					}
+					if (!underRateLimit(owner)) {
+						sendJson(res, 429, {
+							error: "rate_limited",
+							hint: `max ${RATE_LIMIT_MAX_JOBS} jobs per minute per key — wait and retry`,
+						});
+						return;
+					}
+					submittedBy = owner;
+				}
 				readJsonBody(req, res, cfg.maxInputBytes, (body) => {
 					const agentName = typeof body.agent === "string" ? body.agent : "";
 					const input = typeof body.input === "string" ? body.input.trim() : "";
@@ -326,7 +391,7 @@ export function createServer(cfg: HubConfig, log: Logger): http.Server {
 							return;
 						}
 					}
-					const job = insertJob(agent.name, input, resumeSessionId);
+					const job = insertJob(agent.name, input, resumeSessionId, submittedBy);
 					// Answer right away with the pending job; dispatch runs in the
 					// background and the caller polls GET /api/jobs/:id.
 					void dispatchJob(job, agent, cfg, log);
@@ -334,6 +399,51 @@ export function createServer(cfg: HubConfig, log: Logger): http.Server {
 				});
 				return;
 			}
+		}
+
+		// --- /api/keys (admin only; phase 2 remote submitters) ---
+
+		if (parts[1] === "keys" && !parts[2]) {
+			if (!isAdmin(cfg, req.headers)) {
+				sendJson(res, 401, { error: "unauthorized" });
+				return;
+			}
+			if (req.method === "GET") {
+				sendJson(res, 200, { keys: listApiKeys() });
+				return;
+			}
+			if (req.method === "POST") {
+				readJsonBody(req, res, cfg.maxInputBytes, (body) => {
+					const name = typeof body.name === "string" ? body.name : "";
+					if (!/^[A-Za-z0-9._-]+$/.test(name)) {
+						sendJson(res, 400, { error: "name is required (allowed: A-Z a-z 0-9 . _ -)" });
+						return;
+					}
+					const created = createApiKey(name);
+					// The key itself is never logged and never retrievable again.
+					log(`api key '${name}' created`);
+					sendJson(res, 200, {
+						...created,
+						note: "save this key now — only its hash is stored, it cannot be shown again",
+					});
+				});
+				return;
+			}
+		}
+
+		if (parts[1] === "keys" && parts[2] && req.method === "DELETE") {
+			if (!isAdmin(cfg, req.headers)) {
+				sendJson(res, 401, { error: "unauthorized" });
+				return;
+			}
+			const name = decodeURIComponent(parts[2]);
+			if (!deleteApiKey(name)) {
+				sendJson(res, 404, { error: "unknown_key", name });
+				return;
+			}
+			log(`api key '${name}' revoked`);
+			sendJson(res, 200, { ok: true });
+			return;
 		}
 
 		// Batch delete debe estar antes de las rutas genéricas con parts[2]

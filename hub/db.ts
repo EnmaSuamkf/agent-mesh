@@ -41,6 +41,8 @@ export interface Job {
 	resumeSessionId: string | null;
 	/** Per-job token that authenticates awb's POST to /api/jobs/:id/result. */
 	callbackToken: string;
+	/** API-key owner that submitted the job; null for local (loopback) submissions. */
+	submittedBy: string | null;
 	createdAt: string;
 	finishedAt: string | null;
 }
@@ -75,16 +77,27 @@ function open(): DatabaseSync {
 			session_id TEXT,
 			resume_session_id TEXT,
 			callback_token TEXT NOT NULL,
+			submitted_by TEXT,
 			created_at TEXT NOT NULL,
 			finished_at TEXT
 		);
+		CREATE TABLE IF NOT EXISTS api_keys (
+			name TEXT PRIMARY KEY,
+			key_hash TEXT NOT NULL,
+			created_at TEXT NOT NULL
+		);
 	`);
-	// Migration for databases created before resume support; ALTER fails
-	// harmlessly once the column exists.
-	try {
-		db.exec("ALTER TABLE jobs ADD COLUMN resume_session_id TEXT;");
-	} catch {
-		// Column already there.
+	// Migrations for databases created before each column existed; every
+	// ALTER fails harmlessly once its column is there.
+	for (const migration of [
+		"ALTER TABLE jobs ADD COLUMN resume_session_id TEXT;",
+		"ALTER TABLE jobs ADD COLUMN submitted_by TEXT;",
+	]) {
+		try {
+			db.exec(migration);
+		} catch {
+			// Column already there.
+		}
 	}
 	return db;
 }
@@ -150,12 +163,13 @@ function rowToJob(row: Record<string, unknown>): Job {
 		sessionId: row.session_id == null ? null : String(row.session_id),
 		resumeSessionId: row.resume_session_id == null ? null : String(row.resume_session_id),
 		callbackToken: String(row.callback_token),
+		submittedBy: row.submitted_by == null ? null : String(row.submitted_by),
 		createdAt: String(row.created_at),
 		finishedAt: row.finished_at == null ? null : String(row.finished_at),
 	};
 }
 
-export function insertJob(agent: string, input: string, resumeSessionId?: string): Job {
+export function insertJob(agent: string, input: string, resumeSessionId?: string, submittedBy?: string): Job {
 	const job: Job = {
 		id: crypto.randomUUID(),
 		agent,
@@ -166,14 +180,15 @@ export function insertJob(agent: string, input: string, resumeSessionId?: string
 		sessionId: null,
 		resumeSessionId: resumeSessionId ?? null,
 		callbackToken: crypto.randomBytes(24).toString("hex"),
+		submittedBy: submittedBy ?? null,
 		createdAt: new Date().toISOString(),
 		finishedAt: null,
 	};
 	open()
 		.prepare(
-			"INSERT INTO jobs (id, agent, input, status, resume_session_id, callback_token, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			"INSERT INTO jobs (id, agent, input, status, resume_session_id, callback_token, submitted_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 		)
-		.run(job.id, job.agent, job.input, job.status, job.resumeSessionId, job.callbackToken, job.createdAt);
+		.run(job.id, job.agent, job.input, job.status, job.resumeSessionId, job.callbackToken, job.submittedBy, job.createdAt);
 	return job;
 }
 
@@ -228,4 +243,56 @@ export function deleteJobs(ids: string[]): number {
 	if (ids.length === 0) return 0;
 	const placeholders = ids.map(() => "?").join(",");
 	return Number(open().prepare(`DELETE FROM jobs WHERE id IN (${placeholders})`).run(...ids).changes);
+}
+
+// --- API keys (phase 2: remote job submission through the tunnel) ---
+
+export interface ApiKeyInfo {
+	name: string;
+	createdAt: string;
+}
+
+function hashApiKey(key: string): string {
+	return crypto.createHash("sha256").update(key).digest("hex");
+}
+
+/**
+ * Creates (or rotates, if the name exists) an API key. The plaintext key is
+ * returned exactly once — only its sha256 hash is stored, so it can never be
+ * shown again.
+ */
+export function createApiKey(name: string): { name: string; key: string; createdAt: string } {
+	const key = crypto.randomBytes(24).toString("hex");
+	const createdAt = new Date().toISOString();
+	open()
+		.prepare(
+			`INSERT INTO api_keys (name, key_hash, created_at) VALUES (?, ?, ?)
+			 ON CONFLICT(name) DO UPDATE SET key_hash = excluded.key_hash, created_at = excluded.created_at`,
+		)
+		.run(name, hashApiKey(key), createdAt);
+	return { name, key, createdAt };
+}
+
+export function listApiKeys(): ApiKeyInfo[] {
+	const rows = open().prepare("SELECT name, created_at FROM api_keys ORDER BY name").all();
+	return (rows as Record<string, unknown>[]).map((row) => ({
+		name: String(row.name),
+		createdAt: String(row.created_at),
+	}));
+}
+
+export function deleteApiKey(name: string): boolean {
+	return open().prepare("DELETE FROM api_keys WHERE name = ?").run(name).changes > 0;
+}
+
+/**
+ * Resolves a presented API key to its owner, or null. The lookup compares
+ * sha256 hashes; even if that comparison isn't constant-time, its timing
+ * leaks nothing useful about the key — an attacker can't choose sha256
+ * preimages, so matching the stored hash byte-by-byte is not exploitable.
+ */
+export function findApiKeyOwner(key: string): string | null {
+	if (!key) return null;
+	const row = open().prepare("SELECT name FROM api_keys WHERE key_hash = ?").get(hashApiKey(key));
+	return row ? String((row as Record<string, unknown>).name) : null;
 }

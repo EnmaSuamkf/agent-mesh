@@ -12,7 +12,7 @@
  */
 import { inspectLocalHook } from "./awb.ts";
 import { loadConfig } from "./config.ts";
-import { type Agent, deleteAgent, getAgent, listAgents, saveAgent } from "./db.ts";
+import { type Agent, createApiKey, deleteAgent, deleteApiKey, getAgent, listAgents, listApiKeys, saveAgent } from "./db.ts";
 import { startHub } from "./daemon.ts";
 
 const VALID_NAME = /^[A-Za-z0-9._-]+$/;
@@ -39,6 +39,11 @@ Commands:
                                           every finished job prints/stores the session
                                           id to continue from)
   jobs                                   Show recent jobs
+  add-key <name>                         Create (or rotate) an API key for a remote
+                                          user — the key is printed once, only its
+                                          hash is stored
+  list-keys                              List API key owners (never the keys)
+  rm-key <name>                          Revoke an API key
 `);
 }
 
@@ -141,6 +146,40 @@ async function main(): Promise<void> {
 			return;
 		}
 		console.log(`Agent '${name}' removed.`);
+		return;
+	}
+
+	if (cmd === "add-key") {
+		const name = rest[0];
+		if (!name || !VALID_NAME.test(name)) {
+			console.error("Invalid or missing name. Allowed: A-Z a-z 0-9 . _ -");
+			process.exitCode = 1;
+			return;
+		}
+		const { key } = createApiKey(name);
+		console.log(`API key for '${name}' — save it now, it cannot be shown again (only its hash is stored):\n\n  ${key}\n`);
+		console.log(`The user submits jobs with:  Authorization: Bearer ${key.slice(0, 6)}…`);
+		return;
+	}
+
+	if (cmd === "list-keys") {
+		const keys = listApiKeys();
+		if (keys.length === 0) {
+			console.log("No API keys. Use `mesh add-key <name>`.");
+			return;
+		}
+		for (const k of keys) console.log(`${k.name}  created=${k.createdAt}`);
+		return;
+	}
+
+	if (cmd === "rm-key") {
+		const name = rest[0];
+		if (!name || !deleteApiKey(name)) {
+			console.error(`API key '${name}' does not exist.`);
+			process.exitCode = 1;
+			return;
+		}
+		console.log(`API key '${name}' revoked.`);
 		return;
 	}
 
