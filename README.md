@@ -240,6 +240,12 @@ revoked one. `mesh list-keys` shows each key's owner, expiry (or `never`) and us
 (body accepts optional `expiresIn` — same `30m`/`12h`/`7d` format — and `maxUses`),
 `GET /api/keys` and `DELETE /api/keys/:name`, all admin-token gated.
 
+Prefer a UI? The hub page has an **API keys** section (open
+[http://127.0.0.1:8892/#keys](http://127.0.0.1:8892/#keys), admin token required) to create
+keys — with the same optional expiry and max-uses limits — see each key's status (active,
+expired or used up) and remaining uses, and revoke with one click. The plaintext key is shown
+exactly once right after creation, with a copy button.
+
 **3. The remote user submits jobs** through the tunnel with the key as a Bearer token:
 
 ```bash

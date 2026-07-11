@@ -152,7 +152,7 @@
         text-transform: uppercase;
         color: var(--faint);
       }
-      select, textarea, input[type="text"], input[type="password"]{
+      select, textarea, input[type="text"], input[type="password"], input[type="number"]{
         width: 100%;
         background: var(--surface-2);
         border: 1px solid var(--border);
@@ -269,6 +269,40 @@
       .status.pending, .status.running{ color: var(--warn); border: 1px solid var(--warn); }
       .status.done{ color: var(--accent); border: 1px solid var(--accent-dim); }
       .status.failed{ color: var(--fail); border: 1px solid var(--fail); }
+      .status.active{ color: var(--accent); border: 1px solid var(--accent-dim); }
+      .status.dead{ color: var(--fail); border: 1px solid var(--fail); }
+
+      /* API keys section */
+      details.publish > .keys-body{ display: grid; gap: 1.1rem; padding: 0.2rem 1rem 1rem; }
+      .key-reveal[hidden]{ display: none; }
+      .key-reveal{
+        border: 1px solid var(--warn);
+        border-radius: 6px;
+        background: var(--surface-2);
+        padding: 0.8rem 1rem;
+        display: grid;
+        gap: 0.55rem;
+      }
+      .key-reveal p{ margin: 0; font-size: 0.82rem; color: var(--warn); }
+      .key-reveal p.key-usage{ color: var(--muted); }
+      .key-reveal .cmd-row{ display: flex; align-items: center; gap: 0.5rem; }
+      .key-reveal code{
+        font-family: var(--mono);
+        font-size: 0.85rem;
+        color: var(--accent);
+        background: var(--bg);
+        border-radius: 4px;
+        padding: 0.35rem 0.6rem;
+        overflow-wrap: anywhere;
+        user-select: all;
+      }
+      .keys-list-head{
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 0.6rem;
+      }
 
       details summary{
         cursor: pointer;
@@ -600,6 +634,80 @@
             <tbody id="jobs"><tr><td colspan="7" class="empty">No jobs yet.</td></tr></tbody>
           </table>
         </div>
+      </section>
+
+      <section aria-labelledby="keys-h">
+        <h2 id="keys-h">API keys</h2>
+        <details class="publish" id="keys-details">
+          <summary>Manage API keys for remote submitters (operators — requires the admin token)</summary>
+          <div class="keys-body">
+            <form id="key-form">
+              <div title="Lives in ~/.agentmesh-hub/config.json (the adminToken field) — or $MESH_HOME/config.json if you overrode it. The hub also prints it in its log at every startup. It never changes across restarts.">
+                <label for="key-token">Admin token ⓘ</label>
+                <input type="password" id="key-token" required autocomplete="off"
+                  placeholder="The token the hub prints at startup (config.json)" />
+              </div>
+              <div class="two-col">
+                <div>
+                  <label for="key-name">Name</label>
+                  <input type="text" id="key-name" required pattern="[A-Za-z0-9._-]+"
+                    placeholder="e.g. alice" />
+                  <p class="field-hint">
+                    Who this key is for. Reusing a name rotates that key (new secret, limits reset).
+                  </p>
+                </div>
+                <div>
+                  <label for="key-max-uses">Max uses</label>
+                  <input type="number" id="key-max-uses" min="1" step="1"
+                    placeholder="empty = unlimited" />
+                  <p class="field-hint">
+                    Accepted jobs before the key stops working (1 = single use).
+                  </p>
+                </div>
+              </div>
+              <div>
+                <label for="key-expires">Expires in</label>
+                <input type="text" id="key-expires" placeholder="empty = never — or 30m, 12h, 7d" />
+                <p class="field-hint">
+                  How long from now the key works: a number plus m (minutes), h (hours) or d (days).
+                </p>
+              </div>
+              <div class="submit-row">
+                <button type="submit" id="key-btn">Create key</button>
+                <p class="form-msg" id="key-msg"></p>
+              </div>
+            </form>
+            <div class="key-reveal" id="key-reveal" hidden>
+              <p id="key-reveal-title"></p>
+              <div class="cmd-row" id="key-reveal-row"></div>
+              <p class="key-usage" id="key-reveal-usage"></p>
+            </div>
+            <div>
+              <div class="keys-list-head">
+                <label for="keys-refresh">Existing keys</label>
+                <button type="button" id="keys-refresh" class="resume-btn">Refresh</button>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Created</th>
+                      <th>Expires</th>
+                      <th>Uses left</th>
+                      <th>Status</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="keys-rows">
+                    <tr><td colspan="6" class="empty">Enter the admin token and press Refresh.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <p class="agents-msg" id="keys-msg"></p>
+            </div>
+          </div>
+        </details>
       </section>
 
       <footer>
@@ -1202,6 +1310,197 @@
           msg.textContent = err.message === "unauthorized"
             ? "Invalid admin token."
             : `Could not publish: ${err.message}`;
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      // --- API keys (admin) ---
+      // Same trust model as the rest of the admin UI: every call sends the
+      // admin token, and only a token the server accepted is remembered.
+      // Key names/dates come from the admin's own hub, but they are still
+      // rendered via textContent only, like everything else on this page.
+
+      $("key-token").value = localStorage.getItem("meshAdminToken") || "";
+
+      // Deep link: /#keys opens the key manager directly.
+      if (location.hash === "#keys") $("keys-details").open = true;
+
+      function keysAuthHeader() {
+        const token = $("key-token").value.trim();
+        return token ? { authorization: `Bearer ${token}` } : null;
+      }
+
+      // Mirrors the server's rules: expired or out of uses ⇒ rejected (401).
+      function keyState(k) {
+        if (k.expiresAt && new Date(k.expiresAt) <= new Date()) return { label: "expired", cls: "dead" };
+        if (k.usesLeft !== null && k.usesLeft <= 0) return { label: "used up", cls: "dead" };
+        return { label: "active", cls: "active" };
+      }
+
+      function renderKeys(keys) {
+        const tbody = $("keys-rows");
+        tbody.replaceChildren();
+        if (keys.length === 0) {
+          const td = el("td", "empty", "No API keys yet — create one above.");
+          td.colSpan = 6;
+          tbody.appendChild(el("tr")).appendChild(td);
+          return;
+        }
+        for (const k of keys) {
+          const tr = el("tr");
+          tr.appendChild(el("td", "job-agent", k.name));
+
+          const createdTd = el("td", "job-time", fmtTime(k.createdAt));
+          createdTd.title = `Created at: ${new Date(k.createdAt).toLocaleString()}`;
+          tr.appendChild(createdTd);
+
+          const expiresTd = el("td", "job-time", k.expiresAt ? fmtTime(k.expiresAt) : "never");
+          expiresTd.title = k.expiresAt ? `Expires at: ${new Date(k.expiresAt).toLocaleString()}` : "This key never expires";
+          tr.appendChild(expiresTd);
+
+          const usesTd = el("td", "job-time", k.usesLeft === null ? "unlimited" : String(k.usesLeft));
+          usesTd.title = k.usesLeft === null
+            ? "No usage cap"
+            : `${k.usesLeft} accepted job${k.usesLeft === 1 ? "" : "s"} left`;
+          tr.appendChild(usesTd);
+
+          const state = keyState(k);
+          const stateTd = el("td");
+          stateTd.appendChild(el("span", `status ${state.cls}`, state.label));
+          tr.appendChild(stateTd);
+
+          const actionTd = el("td");
+          const revoke = el("button", "del-btn", "revoke");
+          revoke.type = "button";
+          revoke.title = `Revoke '${k.name}' — remote submissions with this key stop immediately`;
+          revoke.addEventListener("click", () => revokeKey(k.name));
+          actionTd.appendChild(revoke);
+          tr.appendChild(actionTd);
+
+          tbody.appendChild(tr);
+        }
+      }
+
+      async function loadKeys() {
+        const msg = $("keys-msg");
+        const headers = keysAuthHeader();
+        if (!headers) {
+          msg.classList.add("error");
+          msg.textContent = "Enter the admin token above first — the hub prints it at startup.";
+          return;
+        }
+        msg.classList.remove("error");
+        msg.textContent = "Loading…";
+        try {
+          const { keys } = await api("/api/keys", { headers });
+          localStorage.setItem("meshAdminToken", $("key-token").value.trim());
+          renderKeys(keys);
+          msg.textContent = "";
+        } catch (err) {
+          msg.classList.add("error");
+          if (err.message === "unauthorized") {
+            localStorage.removeItem("meshAdminToken");
+            msg.textContent = "Invalid admin token — fix it and press Refresh again.";
+          } else {
+            msg.textContent = `Could not load keys: ${err.message}`;
+          }
+        }
+      }
+
+      async function revokeKey(name) {
+        const msg = $("keys-msg");
+        const headers = keysAuthHeader();
+        if (!headers) {
+          msg.classList.add("error");
+          msg.textContent = "Enter the admin token above first — the hub prints it at startup.";
+          return;
+        }
+        if (!confirm(`Revoke API key '${name}'? Remote submissions with it stop working immediately. This cannot be undone.`)) return;
+        msg.classList.remove("error");
+        try {
+          await api(`/api/keys/${encodeURIComponent(name)}`, { method: "DELETE", headers });
+          msg.textContent = `Key '${name}' revoked.`;
+          await loadKeys();
+        } catch (err) {
+          msg.classList.add("error");
+          if (err.message === "unauthorized") {
+            localStorage.removeItem("meshAdminToken");
+            msg.textContent = "Invalid admin token — fix it and try again.";
+          } else {
+            msg.textContent = `Could not revoke: ${err.message}`;
+          }
+        }
+      }
+
+      $("keys-refresh").addEventListener("click", loadKeys);
+
+      // Opening the section with a remembered token loads the list right away.
+      $("keys-details").addEventListener("toggle", () => {
+        if ($("keys-details").open && $("key-token").value.trim()) loadKeys();
+      });
+
+      $("key-form").addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        const btn = $("key-btn");
+        const msg = $("key-msg");
+        const name = $("key-name").value.trim();
+        const expires = $("key-expires").value.trim();
+        const maxUsesRaw = $("key-max-uses").value.trim();
+        msg.classList.remove("error");
+
+        // Same formats the server accepts — validated here too for a
+        // friendlier error than a round-trip 400.
+        const payload = { name };
+        if (expires) {
+          if (!/^\d+[mhd]$/.test(expires)) {
+            msg.classList.add("error");
+            msg.textContent = "Expiry must be a number plus m, h or d — e.g. 30m, 12h, 7d.";
+            return;
+          }
+          payload.expiresIn = expires;
+        }
+        if (maxUsesRaw) {
+          const n = Number(maxUsesRaw);
+          if (!Number.isInteger(n) || n <= 0) {
+            msg.classList.add("error");
+            msg.textContent = "Max uses must be a positive whole number.";
+            return;
+          }
+          payload.maxUses = n;
+        }
+
+        btn.disabled = true;
+        msg.textContent = "Creating…";
+        $("key-reveal").hidden = true;
+        try {
+          const data = await api("/api/keys", {
+            method: "POST",
+            headers: { "content-type": "application/json", ...keysAuthHeader() },
+            body: JSON.stringify(payload),
+          });
+          localStorage.setItem("meshAdminToken", $("key-token").value.trim());
+          // The plaintext key exists only in this response — the hub stores
+          // its hash. Show it once with a copy button; it never renders again.
+          $("key-reveal-title").textContent =
+            `Key for '${data.name}' — copy it now, it cannot be shown again (only its hash is stored):`;
+          const row = $("key-reveal-row");
+          row.replaceChildren();
+          row.appendChild(el("code", null, data.key));
+          row.appendChild(copyButton(data.key, "Copy API key"));
+          $("key-reveal-usage").textContent =
+            "Remote users submit jobs through the tunnel with it: Authorization: Bearer <key>";
+          $("key-reveal").hidden = false;
+          msg.textContent = "";
+          $("key-name").value = "";
+          $("key-expires").value = "";
+          $("key-max-uses").value = "";
+          await loadKeys();
+        } catch (err) {
+          msg.classList.add("error");
+          msg.textContent = err.message === "unauthorized"
+            ? "Invalid admin token."
+            : `Could not create the key: ${err.message}`;
         } finally {
           btn.disabled = false;
         }
