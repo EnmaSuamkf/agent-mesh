@@ -1,7 +1,8 @@
 # AgentMesh
 
 A hub where operators publish AI agents and anyone can send them tasks from a simple web UI.
-Each agent is a [Claude Code](https://code.claude.com) instance running on its operator's own
+Each agent is a coding-agent CLI (by default [Claude Code](https://code.claude.com); the broker
+also supports [free-code](https://github.com/EnmaSuamkf/free-code)) running on its operator's own
 machine, exposed through an [agent-webhook-bridge](https://github.com/EnmaSuamkf/agent-webhook-bridge)
 hook — the hub never runs agents itself, it only routes jobs and collects results.
 
@@ -15,9 +16,10 @@ concept paper ([`index.html`](index.html)).
   build step, no dependencies).
 - **agent-webhook-bridge** running on the same machine, on a branch that includes the result
   callback (`callbackUrl` in the event body).
-- **Claude Code CLI** installed and authenticated (it's what awb spawns to run each job).
-
-> **Note**: Make sure the Claude Code CLI is properly configured with your API key before starting the hub. You can verify this by running `claude --version`.
+- A supported coding-agent CLI installed and authenticated: **Claude Code** (`claude`) and/or
+  **free-code** (`free-code`) — whichever one each agent's hook is configured to spawn
+  (`awb add --runner <claude|free-code>`; default `claude`). The hub itself is runtime-agnostic:
+  an agent is just a hook URL + secret, so mixing both runtimes in the same mesh is fine.
 
 ## Installation
 
@@ -58,8 +60,10 @@ mesh add-agent traductor \
 mesh submit traductor "la red distribuye el trabajo entre nodos"
 ```
 
-The same Claude can be published as many different agents: each awb hook with its own
-`--prompt-template` is a separate personality (translator, code reviewer, copywriter…).
+The same agent CLI (claude or free-code) can be published as many different agents: each awb
+hook with its own `--prompt-template` is a separate personality (translator, code reviewer,
+copywriter…). Add `--runner free-code` to the `awb add` step to have a hook spawn free-code
+instead of Claude Code — the hub side is identical.
 
 **No terminal needed:** steps 2-3 can also be done from the web UI. Open
 `http://127.0.0.1:8892/#publish`, paste the admin token (printed at hub startup), and the form
@@ -70,12 +74,18 @@ with `awb rm <name>` if you no longer want it).
 
 When registering an **existing local hook**, the hub checks awb's config and warns (without
 blocking) if the hook doesn't exist or lacks a `--workdir` — a workdir-less hook runs in whatever
-folder the broker was started from, so its Claude sessions stop being resumable when the broker
+folder the broker was started from, so its sessions stop being resumable when the broker
 is relaunched from somewhere else. The `mesh add-agent` CLI prints the same warnings.
 
-The form's *Advanced settings* covers a custom hook secret and claude's `--permission-mode`
-(e.g. `acceptEdits` for agents that must write files in their sandbox, or `bypassPermissions`
-for agents that must run commands — fixing a PR's CI, running tests…). **`bypassPermissions` is
+The form's *Advanced settings* covers the runner, a custom hook secret, and the permission
+mode. **Runner** picks which CLI the hook spawns — `claude` (the default) or `free-code`; the
+hub writes `spawn:<runner>` into the hook's `consumers` and awb's dispatch selects the matching
+adapter. **Permission mode** is passed through as claude's `--permission-mode` (e.g.
+`acceptEdits` for agents that must write files in their sandbox, or `bypassPermissions` for
+agents that must run commands — fixing a PR's CI, running tests…); for free-code (which has no
+such flag) it's mapped to its `--tools` set — unset → read,grep,find,ls (read-only),
+`acceptEdits` → +edit,write, `bypassPermissions`/`auto`/`dontAsk` → +bash, `plan`/`manual` →
+read-only. **`bypassPermissions` is
 dangerous**: it disables every permission check, so anyone who can submit a job to that agent
 can run arbitrary commands on the operator's machine. The UI asks for an explicit confirmation
 and the API requires `acceptBypassRisk: true` alongside it — it can never be enabled by
@@ -89,7 +99,8 @@ hook" mode.
 ```
 UI/CLI →  POST /api/jobs {agent, input}            hub creates the job
 hub    →  POST to the agent's awb hook              {jobId, input, callbackUrl} + secret
-awb    →  spawns `claude -p` in the hook's workdir  the task inside the prompt template
+awb    →  spawns `claude -p` or `free-code -p`        the task inside the prompt template
+           in the hook's workdir
 awb    →  POST callbackUrl {ok, result, session_id} when the run finishes
 hub    →  job done — the UI sees it on the next poll (every 2.5s)
 ```
@@ -100,7 +111,9 @@ hook, or timeout (default 5 minutes without a callback).
 The jobs table sorts by any of its headers (*Agent*, *Status*, *Session*, *Created*) — sorting by
 *Session* groups the jobs of one conversation together; newest-first by *Created* is the default.
 
-**Continuing a conversation:** every finished job carries the Claude `sessionId` of its run.
+**Continuing a conversation:** every finished job carries the agent `sessionId` of its run
+(a Claude Code session uuid for `--runner claude`, a `.jsonl` path for `--runner free-code` —
+the broker normalizes both into the same `session_id` callback field).
 Submit a new job with that id and the agent resumes the session with all its prior context
 instead of starting fresh — from the UI (the *Session* column chip on any job — `↻` marks runs
 that were continuations, `stateless` marks jobs with no session to continue — or the *Continue
@@ -128,7 +141,7 @@ with the phase-2 API keys.
 | `mesh add-agent <name> --hook-url <url> --secret <s> [--description d] [--owner o] [--tag t] [--disabled]` | Publishes (or updates) an agent. |
 | `mesh rm-agent <name>` | Removes an agent. |
 | `mesh list` | Lists published agents. |
-| `mesh submit <agent> [--session-id <id>] <input...>` | Submits a job and waits for the result. With `--session-id` the agent resumes that Claude session; the id to continue from is printed with every finished job. |
+| `mesh submit <agent> [--session-id <id>] <input...>` | Submits a job and waits for the result. With `--session-id` the agent resumes that session (a claude uuid or a free-code `.jsonl` path); the id to continue from is printed with every finished job. |
 | `mesh jobs` | Shows recent jobs and their status. |
 | `mesh add-key <name> [--expires <dur>] [--max-uses <N>]` | Creates (or rotates) an API key for a remote user. The key is printed once; only its sha256 hash is stored. `--expires` takes `<n>m`/`<n>h`/`<n>d` (e.g. `30m`, `12h`, `7d`); `--max-uses` caps how many remote jobs the key can submit (`1` = single use). Both optional and combinable; without them the key never expires and is unlimited. |
 | `mesh list-keys` | Lists API keys: owner, creation date, expiry (or `never`) and uses left (or `unlimited`) — never the keys. |
@@ -140,10 +153,10 @@ with the phase-2 API keys.
 |---|---|
 | `GET /api/agents` | Public agent list (no secrets, no hook URLs). |
 | `POST /api/agents` | Register an agent (`Authorization: Bearer <admin token>`). |
-| `POST /api/publish` | Create the awb hook **and** register the agent in one step (admin token; hub and awb on the same machine). Body: `{name, description?, owner?, tags?, workdir?, promptTemplate?, secret?, permissionMode?, acceptBypassRisk?}` — `permissionMode` accepts all of awb's modes; `bypassPermissions` is only accepted together with `acceptBypassRisk: true` (it lets job submitters run arbitrary commands on the operator's machine). |
+| `POST /api/publish` | Create the awb hook **and** register the agent in one step (admin token; hub and awb on the same machine). Body: `{name, description?, owner?, tags?, workdir?, promptTemplate?, secret?, runner?, permissionMode?, acceptBypassRisk?}` — `runner` is `claude` (default) or `free-code`; `permissionMode` accepts all of awb's modes (mapped to `--tools` for free-code); `bypassPermissions` is only accepted together with `acceptBypassRisk: true` (it lets job submitters run arbitrary commands on the operator's machine). |
 | `DELETE /api/agents/:name` | Remove an agent (admin token). |
 | `GET /api/jobs` · `GET /api/jobs/:id` | Job list / job status + result. |
-| `POST /api/jobs` | Submit `{ "agent": "...", "input": "...", "sessionId"? }` — with `sessionId` the run resumes that Claude session. Local (loopback) callers need no credentials; requests that arrive through the tunnel need `Authorization: Bearer <api key>` and are rate-limited (10 jobs/min per key). |
+| `POST /api/jobs` | Submit `{ "agent": "...", "input": "...", "sessionId"? }` — with `sessionId` the run resumes that session (uuid for claude, `.jsonl` path for free-code; the hub validates the shape against the agent's harness). Local (loopback) callers need no credentials; requests that arrive through the tunnel need `Authorization: Bearer <api key>` and are rate-limited (10 jobs/min per key). |
 | `POST /api/keys` | Create/rotate an API key: `{ "name": "...", "expiresIn"?, "maxUses"? }` (admin token). `expiresIn` uses the same `30m`/`12h`/`7d` format; `maxUses` is a positive integer. The key is returned once, never stored. |
 | `GET /api/keys` | List keys: owner, creation date, expiry and uses left (admin token; never the keys or hashes). |
 | `DELETE /api/keys/:name` | Revoke an API key (admin token). |
