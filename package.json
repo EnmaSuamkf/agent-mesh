@@ -1,0 +1,12 @@
+{
+  "name": "agentmesh",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "agentmesh:install": "test -d agent-webhook-bridge || git clone git@github.com:EnmaSuamkf/agent-webhook-bridge.git && npm install --prefix agent-webhook-bridge && npm install --prefix hub",
+    "start": "concurrently -n awb,hub -c blue,green \"node scripts/start-service.js awb agent-webhook-bridge 8890\" \"node scripts/start-service.js hub hub 8892\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
