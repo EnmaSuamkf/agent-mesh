@@ -24,20 +24,54 @@ concept paper ([`index.html`](index.html)).
 ## Installation
 
 ```bash
+git clone <this repo> && cd agentmesh
+npm run agentmesh:install
+```
+
+That clones `agent-webhook-bridge` alongside the hub (skipped if it's already there) and runs
+`npm install` in both `agent-webhook-bridge` and `hub`. It's idempotent — safe to re-run any
+time you pull new commits.
+
+<details>
+<summary>Manual / advanced setup (individual pieces, or linking the <code>mesh</code> CLI globally)</summary>
+
+```bash
 git clone <this repo> && cd agentmesh/hub
 npm install        # optional -- only brings in @types/node for the editor
 npm link           # creates the global "mesh" command -> ./cli.ts
 ```
 
 Without `npm link`, every `mesh …` command below works the same as `node hub/cli.ts …` from the
-repo folder.
+repo folder. You'll also need `agent-webhook-bridge` cloned and `npm install`ed separately —
+see its own repo for manual setup.
+
+</details>
 
 ## Quickstart
 
 ```bash
-# 1) start the hub (foreground; or `node daemon.ts` from hub/)
-mesh start
+# 1) start agent-webhook-bridge and the hub together, from the repo root
+npm start
 ```
+
+`npm start` brings up both services in one foreground process (via `concurrently`): awb on
+`127.0.0.1:8890` and the hub on `127.0.0.1:8892`. It's safe to re-run — each service is skipped
+if something is already listening on its port, so you won't get a "port in use" crash if awb or
+the hub is already running.
+
+<details>
+<summary>Manual / advanced: start the hub (or awb) on its own</summary>
+
+```bash
+mesh start                # requires `npm link` from hub/ (see Installation above)
+# or, equivalent, from hub/:
+node daemon.ts
+```
+
+Useful if you only want the hub running, or want the `mesh` CLI linked globally. See
+agent-webhook-bridge's own docs to start it by itself the same way.
+
+</details>
 
 The hub listens on `127.0.0.1:8892`. State lives in `~/.agentmesh-hub/` (`config.json` +
 `mesh.db`); set `MESH_HOME=/your/path` to use a different location. Config is read once at

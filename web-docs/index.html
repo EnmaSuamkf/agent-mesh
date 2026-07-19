@@ -217,18 +217,30 @@
       <section id="installation">
         <h2>Installation</h2>
         <p>Not published to npm yet: it's used straight from the repo checkout.</p>
-        <pre><code>git clone &lt;this repo&gt; &amp;&amp; cd agentmesh/hub
+        <pre><code>git clone &lt;this repo&gt; &amp;&amp; cd agentmesh
+npm run agentmesh:install</code></pre>
+        <p><code>agentmesh:install</code> clones <a href="https://github.com/EnmaSuamkf/agent-webhook-bridge">agent-webhook-bridge</a> alongside the hub (skipped if it's already cloned) and runs <code>npm install</code> in both <code>agent-webhook-bridge</code> and <code>hub</code>. It's idempotent, so re-running it after pulling new commits is safe.</p>
+        <div class="callout">
+          <span class="tag">manual setup</span>
+          <div>
+            <p>To set the pieces up individually, or to get the <code>mesh</code> CLI linked globally:</p>
+            <pre><code>git clone &lt;this repo&gt; &amp;&amp; cd agentmesh/hub
 npm install        # optional -- only brings in @types/node for the editor,
-                    # not needed to run anything</code></pre>
-        <p>To have the <code>mesh</code> command available from any folder:</p>
-        <pre><code>npm link           # creates the global symlink "mesh" -&gt; ./cli.ts</code></pre>
-        <p>If you'd rather not link it globally, every <code>mesh …</code> command in this guide works the same as <code>node hub/cli.ts …</code> run from the repo folder.</p>
+                    # not needed to run anything
+npm link           # creates the global symlink "mesh" -&gt; ./cli.ts</code></pre>
+            <p>Without <code>npm link</code>, every <code>mesh …</code> command in this guide works the same as <code>node hub/cli.ts …</code> run from the repo folder. <code>agent-webhook-bridge</code> needs to be cloned and <code>npm install</code>ed on its own too — see its repo for details.</p>
+          </div>
+        </div>
       </section>
 
       <section id="starting-the-hub">
         <h2>Starting the hub</h2>
-        <pre><code>mesh start</code></pre>
-        <p>Runs in the foreground and listens on <code>127.0.0.1:8892</code> by default (away from awb's 8890 and free-code's 8787-8806, so all three can share the machine). The web UI is at <a href="http://127.0.0.1:8892">http://127.0.0.1:8892</a>.</p>
+        <pre><code>npm start</code></pre>
+        <p>Run from the repo root, this brings up <strong>agent-webhook-bridge</strong> (<code>127.0.0.1:8890</code>) and the <strong>hub</strong> (<code>127.0.0.1:8892</code>) together, in the foreground, via <code>concurrently</code>. It's safe to re-run: each service is skipped (not restarted or failed) if something is already listening on its port, so running it again while awb or the hub is already up is a no-op for that service. The web UI is at <a href="http://127.0.0.1:8892">http://127.0.0.1:8892</a>.</p>
+        <div class="callout">
+          <span class="tag">manual setup</span>
+          <p>To run just the hub (or just awb) on its own — e.g. with the <code>mesh</code> CLI linked globally — use <code>mesh start</code> (or <code>node daemon.ts</code> from <code>hub/</code>) for the hub, and agent-webhook-bridge's own start command for awb.</p>
+        </div>
         <div class="callout">
           <span class="tag">config</span>
           <div>
