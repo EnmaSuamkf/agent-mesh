@@ -200,7 +200,8 @@
       }
       details.advanced > summary::before{ content: "▸ "; }
       details.advanced[open] > summary::before{ content: "▾ "; }
-      details.advanced > div{ display: grid; gap: 0.7rem; padding-bottom: 0.8rem; }
+      details.advanced > div{ display: none; }
+      details.advanced[open] > div{ display: grid; gap: 0.7rem; padding-bottom: 0.8rem; }
       .mode-row{
         display: flex;
         gap: 1.4rem;
@@ -520,6 +521,21 @@
                   placeholder="The agent's personality. {{payload}} is replaced with the task. Empty = AgentMesh's generic template."></textarea>
                 <p class="field-hint">It must include {{payload}} — that's where the submitted task lands.</p>
               </div>
+              <div>
+                <label for="pub-runner">Runner</label>
+                <select id="pub-runner">
+                  <option value="claude" selected>claude — Claude Code (default)</option>
+                  <option value="free-code">free-code — free-code CLI</option>
+                </select>
+                <p class="field-hint">
+                  Which CLI the hook spawns. Both share the same protocol (secret, callbackUrl,
+                  sessionId), so the mesh is runtime-agnostic — only the spawned binary and the
+                  session-id shape differ: claude sessions are uuids, free-code sessions are
+                  <code>.jsonl</code> paths. <code>--permission-mode</code> maps to free-code's
+                  <code>--tools</code> flag (see the hint under Permission mode).
+                </p>
+                <p class="field-hint" id="pub-runner-perm-note" aria-live="polite"></p>
+              </div>
               <details class="advanced">
                 <summary>Advanced settings</summary>
                 <div>
@@ -539,7 +555,7 @@
                       <option value="dontAsk">dontAsk — doesn't authorize writes despite the name</option>
                       <option value="bypassPermissions">⚠ bypassPermissions — no checks at all: edits, Bash, git, network</option>
                     </select>
-                    <p class="field-hint">
+                    <p class="field-hint" id="pub-permission-hint">
                       Passed through as claude's --permission-mode. Careful with acceptEdits:
                       anyone who submits a task can make the agent write in its workdir — only use
                       it with a sandbox workdir. ⚠ bypassPermissions goes much further: the agent
@@ -601,7 +617,9 @@
                 <p class="field-hint">
                   With a session id, the agent picks that conversation back up with all its
                   context instead of starting from scratch. The "Continue" button on a finished
-                  job fills it in for you.
+                  job fills it in for you. The shape depends on the agent's runner: claude
+                  sessions are uuids, free-code sessions are <code>.jsonl</code> paths — both
+                  are accepted as-is.
                 </p>
               </div>
             </div>
@@ -835,9 +853,13 @@
         return btn;
       }
 
-      // How to reopen a session on each harness awb can spawn.
+      // How to reopen a session on each harness awb can spawn. claude
+      // resumes by uuid; free-code resumes by .jsonl path (--session).
       function harnessResumeCommand(harness, sessionId) {
-        const commands = { claude: `claude --resume ${sessionId}` };
+        const commands = {
+          claude: `claude --resume ${sessionId}`,
+          "free-code": `free-code --session ${sessionId}`,
+        };
         return commands[harness] ?? null;
       }
 
@@ -1246,6 +1268,29 @@
         });
       }
 
+      // The permission-mode hint is runtime-specific: claude forwards it as
+      // --permission-mode, free-code maps it to its --tools flag. Update the
+      // hint text when the runner selector changes so the operator reads the
+      // right guidance for the CLI they're about to spawn.
+      const PERM_HINTS = {
+        claude: `Passed through as claude's --permission-mode. Careful with acceptEdits: anyone who submits a task can make the agent write in its workdir — only use it with a sandbox workdir. ⚠ bypassPermissions goes much further: the agent runs any command without asking, so anyone who can submit a job can execute arbitrary commands on this machine — reserve it for agents that truly need it (e.g. running git/tests to fix a PR) and you'll be asked to confirm. --visible and HMAC stay CLI-only: the first breaks the result callback and the second arrives in phase 2 — for those, create the hook with awb add and use the "I already have a hook" mode.`,
+        "free-code": `Mapped to free-code's --tools flag (the CLI has no --permission-mode). Unset → read,grep,find,ls (read-only, the safe default); acceptEdits → +edit,write (no bash); bypassPermissions/auto/dontAsk → +bash (same risk as claude's bypass: anyone who submits a job can run arbitrary commands); plan/manual → read-only (a spawned run has no TTY to confirm). --visible and HMAC stay CLI-only: the first breaks the result callback and the second arrives in phase 2 — for those, create the hook with awb add and use the "I already have a hook" mode.`,
+      };
+      // Short live note right under the Runner dropdown — updates the moment
+      // the operator switches CLI, so the permission difference is visible
+      // without expanding Advanced settings.
+      const RUNNER_PERM_NOTE = {
+        claude: "Permission: claude's --permission-mode. Default (unset) = read-only answers, can't write files. Open Advanced settings below to allow edits (acceptEdits) or commands (bypassPermissions).",
+        "free-code": "Permission: free-code's --tools. Default = read,grep,find,ls (read-only). Open Advanced settings below to allow edits (+edit,write) or commands (+bash).",
+      };
+      function updatePermissionHint() {
+        const runner = $("pub-runner").value;
+        $("pub-permission-hint").textContent = PERM_HINTS[runner] ?? PERM_HINTS.claude;
+        $("pub-runner-perm-note").textContent = RUNNER_PERM_NOTE[runner] ?? RUNNER_PERM_NOTE.claude;
+      }
+      $("pub-runner").addEventListener("change", updatePermissionHint);
+      updatePermissionHint();
+
       $("publish-form").addEventListener("submit", async (ev) => {
         ev.preventDefault();
         const btn = $("pub-btn");
@@ -1263,6 +1308,7 @@
           path = "/api/publish";
           payload.workdir = $("pub-workdir").value.trim();
           payload.promptTemplate = $("pub-template").value;
+          payload.runner = $("pub-runner").value;
           const customSecret = $("pub-hook-secret").value.trim();
           if (customSecret) payload.secret = customSecret;
           const permissionMode = $("pub-permission").value;

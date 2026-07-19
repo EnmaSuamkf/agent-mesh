@@ -45,9 +45,10 @@ Commands:
   submit <agent> [--session-id <id>] <input...>
                                           Submit a job and wait for its result
                                           (with --session-id, the agent resumes that
-                                          Claude session instead of starting fresh —
-                                          every finished job prints/stores the session
-                                          id to continue from)
+                                          session instead of starting fresh — every
+                                          finished job prints/stores the session id to
+                                          continue from; claude sessions are uuids,
+                                          free-code sessions are .jsonl paths)
   jobs                                   Show recent jobs
   add-key <name> [options]               Create (or rotate) an API key for a remote
                                           user — the key is printed once, only its
@@ -147,7 +148,7 @@ async function main(): Promise<void> {
 			console.warn(`\n⚠ No hook named '${info.name}' exists in the local awb — jobs will fail until you create it.`);
 		} else if (info.local && info.found && !info.hasWorkdir) {
 			console.warn(
-				`\n⚠ Hook '${info.name}' has no workdir: it runs in the broker's folder and its Claude sessions can be lost across restarts. Recreate it with --workdir.`,
+				`\n⚠ Hook '${info.name}' has no workdir: it runs in the broker's folder and its sessions can be lost across restarts. Recreate it with --workdir.`,
 			);
 		}
 		return;

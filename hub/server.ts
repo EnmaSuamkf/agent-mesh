@@ -29,6 +29,8 @@ import {
 	inspectLocalHook,
 	PUBLISHABLE_PERMISSION_MODES,
 	type PublishablePermissionMode,
+	PUBLISHABLE_RUNNERS,
+	type PublishableRunner,
 } from "./awb.ts";
 import type { HubConfig } from "./config.ts";
 import type { Agent, Job } from "./db.ts";
@@ -314,9 +316,18 @@ function handleRequest(cfg: HubConfig, log: Logger, req: http.IncomingMessage, r
 				permissionMode = body.permissionMode as PublishablePermissionMode;
 			}
 
+			let runner: PublishableRunner | undefined;
+			if (typeof body.runner === "string" && body.runner !== "") {
+				if (!PUBLISHABLE_RUNNERS.includes(body.runner as PublishableRunner)) {
+					sendJson(res, 400, { error: `invalid runner (allowed: ${PUBLISHABLE_RUNNERS.join(", ")})` });
+					return;
+				}
+				runner = body.runner as PublishableRunner;
+			}
+
 			let hook: { hookUrl: string; secret: string };
 			try {
-				hook = createAwbHook(name, workdir, promptTemplate, { secret: customSecret, permissionMode });
+				hook = createAwbHook(name, workdir, promptTemplate, { secret: customSecret, permissionMode, runner });
 			} catch (err) {
 				if (err instanceof HookExistsError) {
 					sendJson(res, 409, { error: "hook_exists", name });
@@ -403,8 +414,23 @@ function handleRequest(cfg: HubConfig, log: Logger, req: http.IncomingMessage, r
 				let resumeSessionId: string | undefined;
 				if (typeof body.sessionId === "string" && body.sessionId.trim() !== "") {
 					resumeSessionId = body.sessionId.trim();
-					// It travels as an HTTP header to awb — keep it to a sane id shape.
-					if (!/^[A-Za-z0-9-]{8,64}$/.test(resumeSessionId)) {
+					// The shape depends on the agent's runtime: claude sessions are uuids,
+					// free-code sessions are .jsonl paths (under awb's sessions dir, which
+					// the adapter re-validates with its own path-traversal guard). An
+					// unknown/remote harness we can't inspect accepts either shape, just
+					// bounded in length — awb rejects it on its side if it can't use it.
+					const harness = hookRuntime(agent.hookUrl).harness;
+					if (harness === "free-code") {
+						if (!/^[\w./-]+\.jsonl$/.test(resumeSessionId) || resumeSessionId.length > 512) {
+							sendJson(res, 400, { error: "invalid sessionId", hint: "free-code session ids are .jsonl paths" });
+							return;
+						}
+					} else if (harness === "claude") {
+						if (!/^[A-Za-z0-9-]{8,64}$/.test(resumeSessionId)) {
+							sendJson(res, 400, { error: "invalid sessionId" });
+							return;
+						}
+					} else if (resumeSessionId.length < 8 || resumeSessionId.length > 512) {
 						sendJson(res, 400, { error: "invalid sessionId" });
 						return;
 					}
