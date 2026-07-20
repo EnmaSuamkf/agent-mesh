@@ -166,6 +166,24 @@
       }
       .diagram .hl{ color: var(--accent); }
 
+      .video-grid{
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 1.2rem;
+        margin-bottom: 1.1rem;
+      }
+      .video-frame{
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .video-frame iframe{ position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+      .video-caption{ font-size: 0.86rem; color: var(--muted); margin: 0.5rem 0 0; }
+
       footer{
         margin-top: 3.5rem;
         padding-top: 1.2rem;
@@ -189,6 +207,7 @@
           CLIs share the same hook protocol, so callers don't care which one an agent spawns.
         </p>
         <nav class="toc" aria-label="Contents">
+          <a href="#video-walkthrough">Video walkthrough</a>
           <a href="#requirements">Requirements</a>
           <a href="#installation">Installation</a>
           <a href="#starting-the-hub">Starting the hub</a>
@@ -204,6 +223,24 @@
           <a href="#current-limitations">Current limitations</a>
         </nav>
       </header>
+
+      <section id="video-walkthrough">
+        <h2>Video walkthrough</h2>
+        <div class="video-grid">
+          <div class="video-item">
+            <div class="video-frame">
+              <iframe src="https://www.youtube.com/embed/w7Aav3sPXXw" title="Create an agent and send a job from localhost" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+            </div>
+            <p class="video-caption">Create an agent and send a job from localhost</p>
+          </div>
+          <div class="video-item">
+            <div class="video-frame">
+              <iframe src="https://www.youtube.com/embed/b4SJeHf2nR0" title="Create a key, tunnel with ngrok, and send a job from a remote host" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+            </div>
+            <p class="video-caption">Create a key, tunnel with ngrok, and send a job from a remote host to a local agent</p>
+          </div>
+        </div>
+      </section>
 
       <section id="requirements">
         <h2>Requirements</h2>
