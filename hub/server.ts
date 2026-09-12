@@ -3,6 +3,7 @@
  *
  * Routes:
  *   GET    /health                 → liveness
+ *   GET    /api/runners            → which agent CLIs are installed on this host
  *   GET    /api/agents             → public agent list (no secrets, no hook URLs)
  *   POST   /api/agents             → register/update an agent (admin token)
  *   POST   /api/publish            → create the awb hook AND register the agent
@@ -11,6 +12,7 @@
  *   GET    /api/jobs               → recent jobs
  *   POST   /api/jobs               → submit { agent, input }, answers with the job
  *   GET    /api/jobs/:id           → job status + result (UI/CLI poll this)
+ *   POST   /api/jobs/:id/open-terminal → spawn a terminal resuming the job's session (admin)
  *   POST   /api/jobs/:id/result    → awb's result callback (?token=<per-job token>)
  *   GET    /                       → ui/index.html
  *
@@ -23,7 +25,11 @@ import * as http from "node:http";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
+	availableRunners,
+	availableSandboxes,
 	createAwbHook,
+	harnessResumeCommand,
+	harnessResumeEnv,
 	HookExistsError,
 	hookRuntime,
 	inspectLocalHook,
@@ -31,6 +37,8 @@ import {
 	type PublishablePermissionMode,
 	PUBLISHABLE_RUNNERS,
 	type PublishableRunner,
+	PUBLISHABLE_SANDBOXES,
+	type PublishableSandbox,
 } from "./awb.ts";
 import type { HubConfig } from "./config.ts";
 import type { Agent, Job } from "./db.ts";
@@ -54,6 +62,7 @@ import {
 	saveAgent,
 } from "./db.ts";
 import { dispatchJob, type Logger } from "./runner.ts";
+import { NoTerminalEmulatorError, openResumeTerminal } from "./terminal.ts";
 
 const UI_FILE = path.join(import.meta.dirname, "ui", "index.html");
 
@@ -119,6 +128,10 @@ function publicAgent(agent: Agent): Record<string, unknown> {
 		createdAt: agent.createdAt,
 		harness: runtime.harness,
 		workdir: runtime.workdir,
+		sandbox: runtime.sandbox ? "docker" : "host",
+		image: runtime.sandbox?.image ?? null,
+		permissionMode: runtime.permissionMode,
+		promptTemplate: runtime.promptTemplate,
 	};
 }
 
@@ -219,6 +232,11 @@ function handleRequest(cfg: HubConfig, log: Logger, req: http.IncomingMessage, r
 
 	if (parts[0] !== "api") {
 		sendJson(res, 404, { error: "not_found" });
+		return;
+	}
+
+	if (parts[1] === "runners" && !parts[2] && req.method === "GET") {
+		sendJson(res, 200, { runners: availableRunners(), sandboxes: availableSandboxes() });
 		return;
 	}
 
@@ -325,9 +343,42 @@ function handleRequest(cfg: HubConfig, log: Logger, req: http.IncomingMessage, r
 				runner = body.runner as PublishableRunner;
 			}
 
+			let sandbox: PublishableSandbox | undefined;
+			if (typeof body.sandbox === "string" && body.sandbox !== "") {
+				if (!PUBLISHABLE_SANDBOXES.includes(body.sandbox as PublishableSandbox)) {
+					sendJson(res, 400, { error: `invalid sandbox (allowed: ${PUBLISHABLE_SANDBOXES.join(", ")})` });
+					return;
+				}
+				sandbox = body.sandbox as PublishableSandbox;
+			}
+			if (sandbox === "docker" && !availableSandboxes().find((s) => s.id === "docker")?.available) {
+				sendJson(res, 400, {
+					error:
+						"docker is not available on this host (no docker on PATH, or the daemon isn't running). Start Docker and retry, or publish on the host sandbox.",
+				});
+				return;
+			}
+			const effectiveRunner: PublishableRunner = runner ?? "claude";
+			if ((sandbox ?? "host") !== "docker") {
+				const installed = availableRunners().find((r) => r.id === effectiveRunner)?.installed ?? false;
+				if (!installed) {
+					sendJson(res, 400, {
+						error: `runner '${effectiveRunner}' is not installed on this host (install it or use sandbox: docker with an image that ships it)`,
+					});
+					return;
+				}
+			}
+			const image = typeof body.image === "string" && body.image.trim() !== "" ? body.image.trim() : undefined;
+
 			let hook: { hookUrl: string; secret: string };
 			try {
-				hook = createAwbHook(name, workdir, promptTemplate, { secret: customSecret, permissionMode, runner });
+				hook = createAwbHook(name, workdir, promptTemplate, {
+					secret: customSecret,
+					permissionMode,
+					runner,
+					sandbox,
+					image,
+				});
 			} catch (err) {
 				if (err instanceof HookExistsError) {
 					sendJson(res, 409, { error: "hook_exists", name });
@@ -425,7 +476,7 @@ function handleRequest(cfg: HubConfig, log: Logger, req: http.IncomingMessage, r
 							sendJson(res, 400, { error: "invalid sessionId", hint: "free-code session ids are .jsonl paths" });
 							return;
 						}
-					} else if (harness === "claude") {
+					} else if (harness === "claude" || harness === "cursor") {
 						if (!/^[A-Za-z0-9-]{8,64}$/.test(resumeSessionId)) {
 							sendJson(res, 400, { error: "invalid sessionId" });
 							return;
@@ -537,6 +588,49 @@ function handleRequest(cfg: HubConfig, log: Logger, req: http.IncomingMessage, r
 			log(`deleted ${deleted} job(s)`);
 			sendJson(res, 200, { ok: true, deleted });
 		});
+		return;
+	}
+
+	if (parts[1] === "jobs" && parts[2] && parts[3] === "open-terminal" && req.method === "POST") {
+		if (!isAdmin(cfg, req.headers)) {
+			sendJson(res, 401, { error: "unauthorized" });
+			return;
+		}
+		const job = getJob(parts[2]);
+		if (!job) {
+			sendJson(res, 404, { error: "unknown_job" });
+			return;
+		}
+		if (!job.sessionId) {
+			sendJson(res, 400, { error: "no_session_yet" });
+			return;
+		}
+		const agent = getAgent(job.agent);
+		if (!agent) {
+			sendJson(res, 404, { error: "unknown_agent", agent: job.agent });
+			return;
+		}
+		const runtime = hookRuntime(agent.hookUrl);
+		if (!runtime.workdir) {
+			sendJson(res, 400, { error: "unknown_workdir" });
+			return;
+		}
+		const resumeCommand = harnessResumeCommand(runtime.harness, job.sessionId, runtime.workdir);
+		if (!resumeCommand) {
+			sendJson(res, 400, { error: "unknown_harness" });
+			return;
+		}
+		const workdir = runtime.workdir;
+		const harness = runtime.harness;
+		(async () => {
+			try {
+				await openResumeTerminal(workdir, resumeCommand, harness ? harnessResumeEnv(harness) : {});
+				sendJson(res, 200, { ok: true, sessionId: job.sessionId, workdir });
+			} catch (err) {
+				const message = err instanceof NoTerminalEmulatorError ? err.message : String((err as Error).message ?? err);
+				sendJson(res, 500, { error: message });
+			}
+		})();
 		return;
 	}
 
