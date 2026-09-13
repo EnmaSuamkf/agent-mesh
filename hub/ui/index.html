@@ -5,22 +5,64 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>AgentMesh — hub</title>
     <style>
-      /* Same palette/typography as the concept paper (../index.html) so the
-         hub reads as part of the same family. */
+      /* Light document theme — aligned with Target hub tokens. */
       :root{
-        --bg: #0e1416;
-        --surface: #141c1f;
-        --surface-2: #182124;
-        --border: #253034;
-        --text: #e6edee;
-        --muted: #8ea1a6;
-        --faint: #5d7378;
-        --accent: #5ed6a4;
-        --accent-dim: #2f6b54;
-        --warn: #e7b563;
-        --fail: #e77a63;
-        --mono: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-        --sans: ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        --gray-50: #f8fafc;
+        --gray-100: #f1f5f9;
+        --gray-200: #e2e8f0;
+        --gray-300: #cbd5e1;
+        --gray-400: #94a3b8;
+        --gray-500: #64748b;
+        --gray-600: #475569;
+        --gray-700: #334155;
+        --gray-900: #0f172a;
+
+        --accent-50: #eef2ff;
+        --accent-100: #e0e7ff;
+        --accent-500: #6366f1;
+        --accent-600: #4f46e5;
+        --accent-700: #4338ca;
+
+        --success-50: #ecfdf5;
+        --success-200: #a7f3d0;
+        --success-700: #047857;
+
+        --warn-50: #fffbeb;
+        --warn-200: #fde68a;
+        --warn-500: #f59e0b;
+        --warn-700: #b45309;
+
+        --danger-50: #fef2f2;
+        --danger-200: #fecaca;
+        --danger-600: #dc2626;
+        --danger-700: #b91c1c;
+
+        --info-50: #eff6ff;
+        --info-200: #bfdbfe;
+        --info-700: #1d4ed8;
+
+        /* Legacy aliases — keep JS/class usage working */
+        --bg: var(--gray-50);
+        --surface: #ffffff;
+        --surface-2: var(--gray-100);
+        --background: var(--gray-100);
+        --border: var(--gray-200);
+        --text: var(--gray-900);
+        --muted: var(--gray-500);
+        --faint: var(--gray-400);
+        --accent: var(--accent-500);
+        --accent-dim: var(--accent-600);
+        --warn: var(--warn-500);
+        --fail: var(--danger-600);
+
+        --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+        --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+        --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+        --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+        --ring: 0 0 0 3px var(--accent-100);
+        --radius-sm: 6px;
+        --radius: 8px;
       }
       *{ box-sizing: border-box; }
       body{
@@ -28,22 +70,27 @@
         background: var(--bg);
         color: var(--text);
         font-family: var(--sans);
-        line-height: 1.55;
+        font-size: 0.875rem;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
       }
-      a{ color: var(--accent); }
-      button:focus-visible, select:focus-visible, textarea:focus-visible{
-        outline: 2px solid var(--accent);
+      a{ color: var(--accent-600); text-decoration: none; }
+      a:hover{ text-decoration: underline; }
+      button:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-visible{
+        outline: 2px solid var(--accent-500);
         outline-offset: 2px;
+        border-radius: var(--radius-sm);
       }
       .shell{ max-width: 860px; margin: 0 auto; padding: 2.6rem 1.5rem 4rem; }
 
       header.hero{ margin-bottom: 2rem; }
       .eyebrow{
-        font-family: var(--mono);
-        font-size: 0.74rem;
-        letter-spacing: 0.14em;
+        font-size: 0.75rem;
+        font-weight: 500;
+        letter-spacing: 0.04em;
         text-transform: uppercase;
-        color: var(--accent);
+        color: var(--accent-600);
         display: flex;
         align-items: center;
         gap: 0.6em;
@@ -52,25 +99,25 @@
       .eyebrow::before{
         content: "";
         width: 6px; height: 6px;
-        background: var(--accent);
+        background: var(--accent-500);
         border-radius: 50%;
-        box-shadow: 0 0 0 3px var(--accent-dim);
+        box-shadow: 0 0 0 3px var(--accent-100);
       }
       h1{
-        font-family: var(--mono);
-        font-size: clamp(1.4rem, 3.5vw, 1.9rem);
+        font-size: clamp(1.375rem, 3.5vw, 1.75rem);
         font-weight: 600;
+        letter-spacing: -0.011em;
+        line-height: 1.3;
         margin: 0 0 0.4rem;
       }
       .tagline{ color: var(--muted); margin: 0; max-width: 62ch; }
 
       section{ margin-top: 2.2rem; }
       h2{
-        font-family: var(--mono);
-        font-size: 0.9rem;
-        letter-spacing: 0.04em;
+        font-size: 0.8125rem;
+        letter-spacing: 0.02em;
         text-transform: uppercase;
-        color: var(--muted);
+        color: var(--gray-600);
         font-weight: 600;
         margin: 0 0 1rem;
         padding-bottom: 0.55rem;
@@ -82,8 +129,9 @@
       .agent-card{
         background: var(--surface);
         border: 1px solid var(--border);
-        border-radius: 8px;
+        border-radius: var(--radius);
         padding: 0.9rem 1rem;
+        box-shadow: var(--shadow-xs);
       }
       .agent-head{
         display: flex;
@@ -94,38 +142,40 @@
       }
       .agent-card h3{
         font-family: var(--mono);
-        font-size: 0.95rem;
+        font-size: 0.8125rem;
         font-weight: 600;
         margin: 0;
-        color: var(--accent);
+        color: var(--accent-600);
         overflow-wrap: anywhere;
       }
       .del-btn{
-        background: none;
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        color: var(--faint);
-        font-family: var(--mono);
-        font-size: 0.78rem;
-        font-weight: 400;
+        background: var(--surface);
+        border: 1px solid var(--gray-300);
+        border-radius: var(--radius-sm);
+        color: var(--gray-500);
+        font-family: inherit;
+        font-size: 0.75rem;
+        font-weight: 500;
         line-height: 1;
         padding: 0.25rem 0.5rem;
         cursor: pointer;
         flex-shrink: 0;
+        box-shadow: var(--shadow-xs);
       }
-      .del-btn:hover{ color: var(--fail); border-color: var(--fail); }
+      .del-btn:hover{ color: var(--danger-600); border-color: var(--danger-200); background: var(--danger-50); }
       .resume-btn{
-        background: none;
-        border: 1px solid var(--accent-dim);
-        border-radius: 6px;
-        color: var(--accent);
-        font-family: var(--mono);
-        font-size: 0.74rem;
-        font-weight: 400;
+        background: var(--surface);
+        border: 1px solid var(--gray-300);
+        border-radius: var(--radius-sm);
+        color: var(--gray-700);
+        font-family: inherit;
+        font-size: 0.75rem;
+        font-weight: 500;
         padding: 0.3rem 0.7rem;
         cursor: pointer;
+        box-shadow: var(--shadow-xs);
       }
-      .resume-btn:hover{ border-color: var(--accent); }
+      .resume-btn:hover{ border-color: var(--accent-500); color: var(--accent-600); background: var(--accent-50); }
       .agents-msg{ font-size: 0.85rem; color: var(--muted); margin: 0.7rem 0 0; }
       .agents-msg.error{ color: var(--fail); }
       .agent-card p{ margin: 0 0 0.5rem; font-size: 0.88rem; color: var(--muted); }
@@ -137,31 +187,82 @@
         flex-wrap: wrap;
         gap: 0.35rem 0.8rem;
       }
+      .agent-facts{
+        display: grid;
+        gap: 0.35rem;
+        margin: 0.55rem 0 0;
+        font-size: 0.75rem;
+      }
+      .agent-fact{
+        display: grid;
+        grid-template-columns: 5.5rem 1fr;
+        gap: 0.5rem;
+        align-items: baseline;
+      }
+      .agent-fact dt{
+        margin: 0;
+        color: var(--faint);
+        font-weight: 500;
+      }
+      .agent-fact dd{
+        margin: 0;
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        color: var(--gray-700);
+        overflow-wrap: anywhere;
+      }
+      .agent-fact dd.muted{ color: var(--muted); font-style: italic; }
+      .btn-open-terminal{
+        background: var(--accent-600);
+        border: 1px solid var(--accent-600);
+        border-radius: var(--radius-sm);
+        color: #fff;
+        font-family: inherit;
+        font-size: 0.75rem;
+        font-weight: 500;
+        padding: 0.3rem 0.7rem;
+        cursor: pointer;
+        box-shadow: var(--shadow-xs);
+      }
+      .btn-open-terminal:hover:not(:disabled){
+        background: var(--accent-700, var(--accent-600));
+        border-color: var(--accent-700, var(--accent-600));
+      }
+      .btn-open-terminal:disabled{
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
       .tag{
         border: 1px solid var(--border);
         border-radius: 999px;
         padding: 0.05rem 0.55rem;
-        background: var(--surface-2);
+        background: var(--gray-100);
+        color: var(--gray-600);
       }
 
       form{ display: grid; gap: 0.7rem; }
       label{
-        font-family: var(--mono);
-        font-size: 0.74rem;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: var(--faint);
+        font-size: 0.8125rem;
+        font-weight: 500;
+        color: var(--gray-700);
       }
       select, textarea, input[type="text"], input[type="password"], input[type="number"]{
         width: 100%;
-        background: var(--surface-2);
-        border: 1px solid var(--border);
-        border-radius: 6px;
+        background: var(--surface);
+        border: 1px solid var(--gray-300);
+        border-radius: var(--radius-sm);
         color: var(--text);
-        font-family: var(--sans);
-        font-size: 0.95rem;
-        padding: 0.55rem 0.7rem;
+        font-family: inherit;
+        font-size: 0.8125rem;
+        padding: 0.4375rem 0.75rem;
+        transition: border-color 150ms, box-shadow 150ms;
       }
+      select:focus, textarea:focus, input[type="text"]:focus, input[type="password"]:focus, input[type="number"]:focus{
+        outline: none;
+        border-color: var(--accent-500);
+        box-shadow: var(--ring);
+      }
+      select::placeholder, textarea::placeholder, input::placeholder{ color: var(--faint); }
       textarea{ min-height: 6.5rem; resize: vertical; }
       .field-hint{ font-size: 0.78rem; color: var(--faint); margin: 0.25rem 0 0; }
       .two-col{ display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; }
@@ -169,33 +270,35 @@
 
       details.publish{
         border: 1px solid var(--border);
-        border-radius: 8px;
+        border-radius: var(--radius);
         background: var(--surface);
+        box-shadow: var(--shadow-xs);
       }
       details.publish > summary{
         cursor: pointer;
         padding: 0.8rem 1rem;
-        font-family: var(--mono);
-        font-size: 0.85rem;
-        color: var(--muted);
+        font-size: 0.8125rem;
+        font-weight: 500;
+        color: var(--gray-700);
         list-style: none;
       }
-      details.publish > summary::before{ content: "▸ "; color: var(--accent); }
+      details.publish > summary::before{ content: "▸ "; color: var(--accent-500); }
       details.publish[open] > summary::before{ content: "▾ "; }
       details.publish > form{ padding: 0.2rem 1rem 1rem; }
       details.advanced{
-        border: 1px dashed var(--border);
-        border-radius: 6px;
+        border: 1px dashed var(--gray-300);
+        border-radius: var(--radius-sm);
         padding: 0 0.8rem;
+        background: var(--gray-50);
       }
       details.advanced > summary{
         cursor: pointer;
         padding: 0.55rem 0;
-        font-family: var(--mono);
-        font-size: 0.76rem;
-        letter-spacing: 0.05em;
+        font-size: 0.75rem;
+        font-weight: 500;
+        letter-spacing: 0.02em;
         text-transform: uppercase;
-        color: var(--faint);
+        color: var(--gray-500);
         list-style: none;
       }
       details.advanced > summary::before{ content: "▸ "; }
@@ -219,79 +322,115 @@
         color: var(--muted);
         cursor: pointer;
       }
-      .mode-row input{ accent-color: var(--accent); }
+      .mode-row input{ accent-color: var(--accent-500); }
       .submit-row{ display: flex; align-items: center; gap: 1rem; }
       button{
-        background: var(--accent);
-        border: none;
-        border-radius: 6px;
-        color: #0b1512;
-        font-family: var(--mono);
-        font-size: 0.88rem;
-        font-weight: 600;
-        padding: 0.55rem 1.3rem;
+        background: var(--accent-600);
+        border: 1px solid var(--accent-600);
+        border-radius: var(--radius-sm);
+        color: #fff;
+        font-family: inherit;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        padding: 0.4375rem 1.25rem;
         cursor: pointer;
+        box-shadow: var(--shadow-sm);
+        transition: background 150ms, border-color 150ms;
       }
-      button:disabled{ background: var(--accent-dim); cursor: wait; }
-      .form-msg{ font-size: 0.85rem; color: var(--muted); margin: 0; }
-      .form-msg.error{ color: var(--fail); }
-      .form-msg.warn{ color: var(--warn); }
+      button:hover:not(:disabled){ background: var(--accent-700); border-color: var(--accent-700); }
+      button:disabled{ opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+      .form-msg{ font-size: 0.75rem; color: var(--muted); margin: 0; }
+      .form-msg.error{ color: var(--danger-600); }
+      .form-msg.warn{ color: var(--warn-700); }
 
-      .table-wrap{ overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
-      table{ width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+      .table-wrap{
+        overflow-x: auto;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface);
+        box-shadow: var(--shadow-xs);
+      }
+      table{ width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
       th, td{ text-align: left; padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--border); vertical-align: top; }
       tr:last-child td{ border-bottom: none; }
       th{
-        color: var(--faint);
+        color: var(--gray-600);
         font-weight: 500;
-        font-family: var(--mono);
-        font-size: 0.72rem;
-        letter-spacing: 0.06em;
+        font-size: 0.75rem;
+        letter-spacing: 0.02em;
         text-transform: uppercase;
-        background: var(--surface);
+        background: var(--gray-50);
         white-space: nowrap;
       }
-      td.job-id, td.job-time{ font-family: var(--mono); font-size: 0.76rem; color: var(--faint); white-space: nowrap; }
-      td.job-agent{ font-family: var(--mono); font-size: 0.8rem; white-space: nowrap; }
-      td.job-harness{ font-family: var(--mono); font-size: 0.8rem; color: var(--accent); white-space: nowrap; }
+      td.job-id, td.job-time{ font-family: var(--mono); font-size: 0.75rem; color: var(--gray-500); white-space: nowrap; }
+      td.job-agent{ font-family: var(--mono); font-size: 0.8125rem; white-space: nowrap; }
+      td.job-harness{ font-family: var(--mono); font-size: 0.8125rem; color: var(--accent-600); white-space: nowrap; }
       th.sortable{ cursor: pointer; user-select: none; }
-      th.sortable:hover{ color: var(--accent); }
-      input[type="checkbox"]{ accent-color: var(--accent); cursor: pointer; }
+      th.sortable:hover{ color: var(--accent-600); }
+      input[type="checkbox"]{ accent-color: var(--accent-500); cursor: pointer; }
       .job-checkbox{ margin: 0; }
       .status{
-        font-family: var(--mono);
-        font-size: 0.72rem;
-        letter-spacing: 0.05em;
-        text-transform: uppercase;
+        display: inline-flex;
+        align-items: center;
+        font-size: 0.75rem;
+        font-weight: 500;
+        text-transform: capitalize;
         border-radius: 999px;
-        padding: 0.1rem 0.6rem;
+        padding: 0.125rem 0.5rem;
         white-space: nowrap;
+        border: 1px solid transparent;
       }
-      .status.pending, .status.running{ color: var(--warn); border: 1px solid var(--warn); }
-      .status.done{ color: var(--accent); border: 1px solid var(--accent-dim); }
-      .status.failed{ color: var(--fail); border: 1px solid var(--fail); }
-      .status.active{ color: var(--accent); border: 1px solid var(--accent-dim); }
-      .status.dead{ color: var(--fail); border: 1px solid var(--fail); }
+      .status.pending{
+        background: var(--gray-100);
+        border-color: var(--gray-200);
+        color: var(--gray-500);
+      }
+      .status.running{
+        background: var(--info-50);
+        border-color: var(--info-200);
+        color: var(--info-700);
+      }
+      .status.done{
+        background: var(--success-50);
+        border-color: var(--success-200);
+        color: var(--success-700);
+      }
+      .status.failed{
+        background: var(--danger-50);
+        border-color: var(--danger-200);
+        color: var(--danger-700);
+      }
+      .status.active{
+        background: var(--success-50);
+        border-color: var(--success-200);
+        color: var(--success-700);
+      }
+      .status.dead{
+        background: var(--danger-50);
+        border-color: var(--danger-200);
+        color: var(--danger-700);
+      }
 
       /* API keys section */
       details.publish > .keys-body{ display: grid; gap: 1.1rem; padding: 0.2rem 1rem 1rem; }
       .key-reveal[hidden]{ display: none; }
       .key-reveal{
-        border: 1px solid var(--warn);
-        border-radius: 6px;
-        background: var(--surface-2);
+        border: 1px solid var(--warn-200);
+        border-radius: var(--radius-sm);
+        background: var(--warn-50);
         padding: 0.8rem 1rem;
         display: grid;
         gap: 0.55rem;
       }
-      .key-reveal p{ margin: 0; font-size: 0.82rem; color: var(--warn); }
+      .key-reveal p{ margin: 0; font-size: 0.8125rem; color: var(--warn-700); }
       .key-reveal p.key-usage{ color: var(--muted); }
       .key-reveal .cmd-row{ display: flex; align-items: center; gap: 0.5rem; }
       .key-reveal code{
         font-family: var(--mono);
-        font-size: 0.85rem;
-        color: var(--accent);
-        background: var(--bg);
+        font-size: 0.8125rem;
+        color: var(--gray-800, var(--gray-700));
+        background: var(--surface);
+        border: 1px solid var(--border);
         border-radius: 4px;
         padding: 0.35rem 0.6rem;
         overflow-wrap: anywhere;
@@ -317,15 +456,15 @@
         overflow: hidden;
         text-overflow: ellipsis;
       }
-      td.job-task-cell summary::before{ content: "▸ "; color: var(--accent); }
+      td.job-task-cell summary::before{ content: "▸ "; color: var(--accent-500); }
       td.job-task-cell details[open] > summary::before{ content: "▾ "; }
       details pre{
         font-family: var(--mono);
-        font-size: 0.8rem;
+        font-size: 0.8125rem;
         line-height: 1.55;
-        background: var(--surface-2);
+        background: var(--gray-100);
         border: 1px solid var(--border);
-        border-radius: 6px;
+        border-radius: var(--radius-sm);
         padding: 0.7rem 0.9rem;
         margin: 0.5rem 0 0.2rem;
         white-space: pre-wrap;
@@ -343,9 +482,9 @@
       .job-expand-row td{ padding-top: 0; border-bottom: none; }
       .job-expand-row.job-expand-last td{ border-bottom: 1px solid var(--border); }
       .job-section{
-        background: var(--surface-2);
+        background: var(--gray-50);
         border: 1px solid var(--border);
-        border-radius: 6px;
+        border-radius: var(--radius-sm);
         padding: 0.85rem 1rem;
       }
       .job-section-title{
@@ -354,9 +493,9 @@
         gap: 0.5rem;
         font-size: 0.75rem;
         font-weight: 600;
-        color: var(--muted);
+        color: var(--gray-600);
         text-transform: uppercase;
-        letter-spacing: 0.05em;
+        letter-spacing: 0.02em;
         margin-bottom: 0.65rem;
       }
       .job-section-content{
@@ -367,12 +506,13 @@
         color: var(--text);
       }
       .job-section-content code{
-        background: var(--background);
+        background: var(--gray-100);
+        border: 1px solid var(--border);
         padding: 0.15rem 0.4rem;
         border-radius: 3px;
         font-family: var(--mono);
         font-size: 0.9em;
-        color: var(--accent);
+        color: var(--gray-800, var(--gray-700));
       }
       .job-session-row{
         display: flex;
@@ -387,29 +527,32 @@
       }
       .job-session-id{
         font-family: var(--mono);
-        font-size: 0.85rem;
-        color: var(--accent);
-        background: var(--background);
+        font-size: 0.8125rem;
+        color: var(--gray-700);
+        background: var(--surface);
+        border: 1px solid var(--border);
         padding: 0.35rem 0.6rem;
         border-radius: 4px;
         user-select: all;
         overflow-wrap: anywhere;
       }
       .btn-copy{
-        background: transparent;
-        border: 1px solid var(--border);
-        color: var(--muted);
+        background: var(--surface);
+        border: 1px solid var(--gray-300);
+        color: var(--gray-500);
         padding: 0.3rem 0.45rem;
         border-radius: 4px;
-        font-size: 0.85rem;
+        font-size: 0.8125rem;
         line-height: 1;
         cursor: pointer;
         flex-shrink: 0;
-        transition: all 0.2s;
+        box-shadow: var(--shadow-xs);
+        transition: background 150ms, border-color 150ms, color 150ms;
       }
       .btn-copy:hover{
-        border-color: var(--accent);
-        color: var(--accent);
+        border-color: var(--accent-500);
+        color: var(--accent-600);
+        background: var(--accent-50);
       }
       .job-session-actions{
         display: flex;
@@ -421,9 +564,9 @@
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
-        background: var(--background);
+        background: var(--surface);
         border: 1px solid var(--border);
-        border-radius: 6px;
+        border-radius: var(--radius-sm);
         padding: 0.7rem 0.9rem;
       }
       .job-open-instructions p{
@@ -438,29 +581,35 @@
       }
       .job-open-instructions code{
         font-family: var(--mono);
-        font-size: 0.8rem;
-        color: var(--accent);
-        background: var(--surface-2);
+        font-size: 0.8125rem;
+        color: var(--gray-700);
+        background: var(--gray-100);
+        border: 1px solid var(--border);
         border-radius: 4px;
         padding: 0.35rem 0.6rem;
         overflow-wrap: anywhere;
         user-select: all;
       }
-      .empty{ color: var(--faint); font-size: 0.9rem; padding: 0.8rem; }
+      .empty{ color: var(--faint); font-size: 0.875rem; padding: 0.8rem; }
 
       footer{
         margin-top: 3rem;
         padding-top: 1.1rem;
         border-top: 1px solid var(--border);
-        font-family: var(--mono);
-        font-size: 0.74rem;
-        color: var(--faint);
+        font-size: 0.75rem;
+        color: var(--gray-400);
         display: flex;
         justify-content: space-between;
         flex-wrap: wrap;
         gap: 0.5rem;
       }
-      #hub-status.offline{ color: var(--fail); }
+      #hub-status.offline{ color: var(--danger-600); }
+
+      code, kbd{
+        font-family: var(--mono);
+        font-size: 0.9em;
+        font-variant-ligatures: none;
+      }
     </style>
   </head>
   <body>
@@ -512,8 +661,9 @@
             </div>
             <div id="pub-new-fields">
               <div>
-                <label for="pub-workdir">Workdir (sandbox)</label>
+                <label for="pub-workdir">Working directory</label>
                 <input type="text" id="pub-workdir" placeholder="~/agentmesh-sandbox (default)" />
+                <p class="field-hint">Directory the agent runs in — its sessions and file writes stay here.</p>
               </div>
               <div>
                 <label for="pub-template">Prompt template</label>
@@ -523,18 +673,40 @@
               </div>
               <div>
                 <label for="pub-runner">Runner</label>
-                <select id="pub-runner">
-                  <option value="claude" selected>claude — Claude Code (default)</option>
-                  <option value="free-code">free-code — free-code CLI</option>
+                <select id="pub-runner" disabled>
+                  <option value="">Probing installed CLIs…</option>
                 </select>
-                <p class="field-hint">
-                  Which CLI the hook spawns. Both share the same protocol (secret, callbackUrl,
-                  sessionId), so the mesh is runtime-agnostic — only the spawned binary and the
-                  session-id shape differ: claude sessions are uuids, free-code sessions are
-                  <code>.jsonl</code> paths. <code>--permission-mode</code> maps to free-code's
-                  <code>--tools</code> flag (see the hint under Permission mode).
-                </p>
+                <p class="field-hint" id="pub-runner-desc" aria-live="polite"></p>
+                <p class="field-hint" id="pub-runners-msg" aria-live="polite"></p>
                 <p class="field-hint" id="pub-runner-perm-note" aria-live="polite"></p>
+              </div>
+              <div>
+                <label for="pub-sandbox">Sandbox</label>
+                <select id="pub-sandbox" disabled>
+                  <option value="host">This machine (default)</option>
+                </select>
+                <p class="field-hint" id="pub-sandbox-hint">
+                  The agent runs directly on this machine, as you — its permissions are the only limit.
+                </p>
+              </div>
+              <div id="pub-image-row" hidden>
+                <label for="pub-image">Container image</label>
+                <input type="text" id="pub-image" autocomplete="off"
+                  placeholder="target-agent:latest" />
+                <p class="field-hint" id="pub-image-hint"></p>
+              </div>
+              <div>
+                <label for="pub-permission">Permission mode</label>
+                <select id="pub-permission">
+                  <option value="">Read-only (default) — answer but cannot write files or run commands</option>
+                  <option value="acceptEdits">acceptEdits — can write files inside the sandbox</option>
+                  <option value="auto">auto — harness decides per action</option>
+                  <option value="dontAsk">dontAsk — never prompts for confirmation</option>
+                  <option value="plan">plan — planning only, no execution</option>
+                  <option value="manual">manual — prompts when the harness supports it</option>
+                  <option value="bypassPermissions">⚠ bypassPermissions — no restrictions; arbitrary command execution</option>
+                </select>
+                <p class="field-hint" id="pub-permission-hint"></p>
               </div>
               <details class="advanced">
                 <summary>Advanced settings</summary>
@@ -543,29 +715,6 @@
                     <label for="pub-hook-secret">Hook secret</label>
                     <input type="text" id="pub-hook-secret" autocomplete="off"
                       placeholder="empty = a random one is generated (recommended)" />
-                  </div>
-                  <div>
-                    <label for="pub-permission">Permission mode</label>
-                    <select id="pub-permission">
-                      <option value="">no permissions — the agent answers but can't write (default)</option>
-                      <option value="acceptEdits">acceptEdits — can create/edit files in its workdir</option>
-                      <option value="plan">plan — plans only, doesn't execute</option>
-                      <option value="auto">auto</option>
-                      <option value="manual">manual</option>
-                      <option value="dontAsk">dontAsk — doesn't authorize writes despite the name</option>
-                      <option value="bypassPermissions">⚠ bypassPermissions — no checks at all: edits, Bash, git, network</option>
-                    </select>
-                    <p class="field-hint" id="pub-permission-hint">
-                      Passed through as claude's --permission-mode. Careful with acceptEdits:
-                      anyone who submits a task can make the agent write in its workdir — only use
-                      it with a sandbox workdir. ⚠ bypassPermissions goes much further: the agent
-                      runs any command without asking, so anyone who can submit a job can execute
-                      arbitrary commands on this machine — reserve it for agents that truly need
-                      it (e.g. running git/tests to fix a PR) and you'll be asked to confirm.
-                      --visible and HMAC stay CLI-only: the first breaks the result callback and
-                      the second arrives in phase 2 — for those, create the hook with awb add and
-                      use the "I already have a hook" mode.
-                    </p>
                   </div>
                 </div>
               </details>
@@ -617,9 +766,9 @@
                 <p class="field-hint">
                   With a session id, the agent picks that conversation back up with all its
                   context instead of starting from scratch. The "Continue" button on a finished
-                  job fills it in for you. The shape depends on the agent's runner: claude
-                  sessions are uuids, free-code sessions are <code>.jsonl</code> paths — both
-                  are accepted as-is.
+                  job fills it in for you. The shape depends on the agent's runner: claude and
+                  cursor sessions are chat uuids; free-code sessions are <code>.jsonl</code> paths.
+                  Cursor resumes are scoped to the agent's working directory.
                 </p>
               </div>
             </div>
@@ -757,6 +906,22 @@
         return data;
       }
 
+      function agentFact(label, value, { muted = false, title = null } = {}) {
+        const row = el("div", "agent-fact");
+        const dt = document.createElement("dt");
+        dt.textContent = label;
+        const dd = el("dd", muted ? "muted" : null, value);
+        if (title) dd.title = title;
+        row.appendChild(dt);
+        row.appendChild(dd);
+        return row;
+      }
+
+      function truncate(text, max = 120) {
+        if (!text || text.length <= max) return text;
+        return `${text.slice(0, max)}…`;
+      }
+
       function renderAgents(agents) {
         const grid = $("agents");
         const select = $("agent-select");
@@ -782,6 +947,33 @@
           head.appendChild(del);
           card.appendChild(head);
           card.appendChild(el("p", null, agent.description || "No description."));
+
+          const facts = el("dl", "agent-facts");
+          facts.appendChild(
+            agentFact("Runner", agent.harness || "unknown", { muted: !agent.harness }),
+          );
+          facts.appendChild(
+            agentFact("Workdir", agent.workdir || "unknown", { muted: !agent.workdir, title: agent.workdir || undefined }),
+          );
+          const sandboxLabel =
+            agent.sandbox === "docker"
+              ? agent.image
+                ? `docker · ${agent.image}`
+                : "docker"
+              : "this machine";
+          facts.appendChild(agentFact("Sandbox", sandboxLabel, { title: agent.image || undefined }));
+          facts.appendChild(
+            agentFact("Permissions", agent.permissionMode || "default", { muted: !agent.permissionMode }),
+          );
+          if (agent.promptTemplate) {
+            facts.appendChild(
+              agentFact("Prompt", truncate(agent.promptTemplate), { title: agent.promptTemplate }),
+            );
+          } else {
+            facts.appendChild(agentFact("Prompt", "none", { muted: true }));
+          }
+          card.appendChild(facts);
+
           const meta = el("div", "agent-meta");
           if (agent.owner) meta.appendChild(el("span", null, `by ${agent.owner}`));
           for (const tag of agent.tags) meta.appendChild(el("span", "tag", tag));
@@ -853,14 +1045,22 @@
         return btn;
       }
 
+      function shellQuote(value) {
+        return `'${String(value).replace(/'/g, "'\\''")}'`;
+      }
+
       // How to reopen a session on each harness awb can spawn. claude
-      // resumes by uuid; free-code resumes by .jsonl path (--session).
-      function harnessResumeCommand(harness, sessionId) {
-        const commands = {
-          claude: `claude --resume ${sessionId}`,
-          "free-code": `free-code --session ${sessionId}`,
-        };
-        return commands[harness] ?? null;
+      // resumes by uuid; free-code by .jsonl path; cursor by chat uuid with
+      // --workspace (needs the agent workdir, not just cd into it).
+      function harnessResumeCommand(harness, sessionId, workdir) {
+        if (harness === "claude") return `claude --resume ${shellQuote(sessionId)}`;
+        if (harness === "free-code") return `free-code --session ${shellQuote(sessionId)} --no-rag-server`;
+        if (harness === "cursor") {
+          return workdir
+            ? `agent --resume ${shellQuote(sessionId)} --trust --approve-mcps --workspace ${shellQuote(workdir)}`
+            : null;
+        }
+        return null;
       }
 
       function updateDeleteButton() {
@@ -1030,17 +1230,24 @@
             idRow.appendChild(copyButton(job.sessionId, "Copy session ID"));
             sessionRow.appendChild(idRow);
 
+            const actions = el("div", "job-session-actions");
+            const openBtn = el("button", "btn-open-terminal", "Open conversation");
+            openBtn.type = "button";
+            openBtn.title = job.workdir
+              ? `Opens a terminal on this machine, cd'd into ${job.workdir}, resuming this session.`
+              : "Opens a terminal on this machine resuming this session.";
+            openBtn.addEventListener("click", () => openJobTerminal(job, openBtn));
+            actions.appendChild(openBtn);
             if (job.status === "done") {
-              const actions = el("div", "job-session-actions");
               const cont = el("button", "resume-btn", "Send new job to same agent →");
               cont.type = "button";
               cont.addEventListener("click", () => continueSession(job));
               actions.appendChild(cont);
-              sessionRow.appendChild(actions);
             }
+            sessionRow.appendChild(actions);
 
             // How to reopen this conversation locally, always visible.
-            const resumeCmd = harnessResumeCommand(job.harness, job.sessionId);
+            const resumeCmd = harnessResumeCommand(job.harness, job.sessionId, job.workdir);
             if (resumeCmd) {
               const instructions = el("div", "job-open-instructions");
               const hint = document.createElement("p");
@@ -1049,9 +1256,10 @@
                 : "Run this in a terminal, from the agent's working directory:";
               instructions.appendChild(hint);
               const cmdRow = el("div", "cmd-row");
-              const command = job.workdir
-                ? `cd '${job.workdir}' && ${resumeCmd}`
-                : resumeCmd;
+              const command =
+                job.harness === "cursor" || !job.workdir
+                  ? resumeCmd
+                  : `cd ${shellQuote(job.workdir)} && ${resumeCmd}`;
               cmdRow.appendChild(el("code", null, command));
               cmdRow.appendChild(copyButton(command, "Copy command"));
               instructions.appendChild(cmdRow);
@@ -1159,6 +1367,14 @@
         }
       });
 
+      function adminTokenOrPrompt() {
+        let token = (localStorage.getItem("meshAdminToken") || "").trim();
+        if (token) return token;
+        return (prompt(
+          "Admin token — it lives in ~/.agentmesh-hub/config.json (adminToken) and the hub prints it at startup:",
+        ) || "").trim();
+      }
+
       // Pre-fills the submit form to keep talking to the session a job ran in.
       function continueSession(job) {
         $("agent-select").value = job.agent;
@@ -1166,6 +1382,35 @@
         $("resume-details").open = true;
         $("submit-form").scrollIntoView({ behavior: "smooth" });
         $("input-text").focus();
+      }
+
+      async function openJobTerminal(job, btn) {
+        const msg = $("agents-msg");
+        msg.classList.remove("error");
+        const token = adminTokenOrPrompt();
+        if (!token) return;
+        const prev = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = "Opening…";
+        try {
+          await api(`/api/jobs/${encodeURIComponent(job.id)}/open-terminal`, {
+            method: "POST",
+            headers: { authorization: `Bearer ${token}` },
+          });
+          localStorage.setItem("meshAdminToken", token);
+          msg.textContent = "Terminal opened — resume command is running in a new window.";
+        } catch (err) {
+          msg.classList.add("error");
+          if (err.message === "unauthorized") {
+            localStorage.removeItem("meshAdminToken");
+            msg.textContent = "Invalid admin token — try Open conversation again.";
+          } else {
+            msg.textContent = `Could not open terminal: ${err.message}`;
+          }
+        } finally {
+          btn.disabled = false;
+          btn.textContent = prev;
+        }
       }
 
       async function removeAgent(name) {
@@ -1268,28 +1513,137 @@
         });
       }
 
-      // The permission-mode hint is runtime-specific: claude forwards it as
-      // --permission-mode, free-code maps it to its --tools flag. Update the
-      // hint text when the runner selector changes so the operator reads the
-      // right guidance for the CLI they're about to spawn.
+      const RUNNER_OPTIONS = [
+        { value: "claude", label: "Claude Code (default)", description: "Spawns claude -p / claude --resume. Sessions are uuids." },
+        { value: "free-code", label: "free-code", description: "Spawns the free-code CLI; sessions are .jsonl paths chained the same way." },
+        { value: "cursor", label: "Cursor Agent", description: "Spawns the Cursor Agent CLI (agent); sessions resume by chat id with --workspace." },
+      ];
+      const SANDBOX_OPTIONS = [
+        { value: "host", label: "This machine (default)", description: "The agent runs directly on this machine, as you — its permissions are the only limit." },
+        { value: "docker", label: "Docker container", description: "Runs inside a container. Only the working directory and the harness's own state are mounted." },
+      ];
+      const DEFAULT_IMAGES = {
+        claude: "target-agent:latest",
+        "free-code": "target-agent-freecode:latest",
+        cursor: "target-agent-cursor:latest",
+      };
       const PERM_HINTS = {
-        claude: `Passed through as claude's --permission-mode. Careful with acceptEdits: anyone who submits a task can make the agent write in its workdir — only use it with a sandbox workdir. ⚠ bypassPermissions goes much further: the agent runs any command without asking, so anyone who can submit a job can execute arbitrary commands on this machine — reserve it for agents that truly need it (e.g. running git/tests to fix a PR) and you'll be asked to confirm. --visible and HMAC stay CLI-only: the first breaks the result callback and the second arrives in phase 2 — for those, create the hook with awb add and use the "I already have a hook" mode.`,
-        "free-code": `Mapped to free-code's --tools flag (the CLI has no --permission-mode). Unset → read,grep,find,ls (read-only, the safe default); acceptEdits → +edit,write (no bash); bypassPermissions/auto/dontAsk → +bash (same risk as claude's bypass: anyone who submits a job can run arbitrary commands); plan/manual → read-only (a spawned run has no TTY to confirm). --visible and HMAC stay CLI-only: the first breaks the result callback and the second arrives in phase 2 — for those, create the hook with awb add and use the "I already have a hook" mode.`,
+        claude: "Passed through as claude's --permission-mode. acceptEdits lets job submitters make the agent write in its workdir — only use with a dedicated workdir. bypassPermissions allows arbitrary commands on this machine; you'll be asked to confirm before publishing.",
+        "free-code": "Mapped to free-code's --tools flag. Unset → read,grep,find,ls; acceptEdits → +edit,write; bypassPermissions/auto/dontAsk → +bash; plan/manual → read-only.",
+        cursor: "Cursor has no --permission-mode. Unset/manual/plan → read/analyse only (no --force). acceptEdits/auto/dontAsk/bypassPermissions → --force so edits and shell commands apply in headless runs.",
       };
-      // Short live note right under the Runner dropdown — updates the moment
-      // the operator switches CLI, so the permission difference is visible
-      // without expanding Advanced settings.
       const RUNNER_PERM_NOTE = {
-        claude: "Permission: claude's --permission-mode. Default (unset) = read-only answers, can't write files. Open Advanced settings below to allow edits (acceptEdits) or commands (bypassPermissions).",
-        "free-code": "Permission: free-code's --tools. Default = read,grep,find,ls (read-only). Open Advanced settings below to allow edits (+edit,write) or commands (+bash).",
+        claude: "Session ids are claude uuids. Default permission = read-only.",
+        "free-code": "Session ids are .jsonl paths. Default permission = read-only tools.",
+        cursor: "Session ids are Cursor chat uuids, scoped to the working directory above.",
       };
-      function updatePermissionHint() {
-        const runner = $("pub-runner").value;
-        $("pub-permission-hint").textContent = PERM_HINTS[runner] ?? PERM_HINTS.claude;
-        $("pub-runner-perm-note").textContent = RUNNER_PERM_NOTE[runner] ?? RUNNER_PERM_NOTE.claude;
+
+      let hostCapabilities = { runners: [], sandboxes: [], probeFailed: false };
+
+      function runnerInstalled(id) {
+        return hostCapabilities.runners.find((r) => r.id === id)?.installed ?? false;
       }
-      $("pub-runner").addEventListener("change", updatePermissionHint);
-      updatePermissionHint();
+      function sandboxAvailable(id) {
+        return hostCapabilities.sandboxes.find((s) => s.id === id)?.available ?? id === "host";
+      }
+
+      function rebuildRunnerSelect() {
+        const sel = $("pub-runner");
+        const prev = sel.value;
+        sel.replaceChildren();
+        const msg = $("pub-runners-msg");
+        msg.classList.remove("error");
+        if (hostCapabilities.probeFailed) {
+          sel.disabled = true;
+          msg.classList.add("error");
+          msg.textContent = "Could not reach the hub to probe runners — refresh the page and try again.";
+          return;
+        }
+        const installed = RUNNER_OPTIONS.filter((opt) => runnerInstalled(opt.value));
+        if (installed.length === 0) {
+          sel.disabled = true;
+          msg.textContent = "No agent CLIs are installed on this host.";
+          return;
+        }
+        msg.textContent = "";
+        sel.disabled = false;
+        for (const opt of installed) {
+          const o = document.createElement("option");
+          o.value = opt.value;
+          o.textContent = `${opt.value} — ${opt.label}`;
+          sel.appendChild(o);
+        }
+        if (installed.some((o) => o.value === prev)) sel.value = prev;
+        else sel.value = installed[0].value;
+        updateRunnerFields();
+      }
+
+      function rebuildSandboxSelect() {
+        const sel = $("pub-sandbox");
+        const prev = sel.value;
+        sel.replaceChildren();
+        const available = SANDBOX_OPTIONS.filter((opt) => sandboxAvailable(opt.value));
+        for (const opt of available) {
+          const o = document.createElement("option");
+          o.value = opt.value;
+          o.textContent = opt.label;
+          sel.appendChild(o);
+        }
+        sel.disabled = available.length === 0;
+        if (available.some((o) => o.value === prev)) sel.value = prev;
+        else if (available.length) sel.value = available[0].value;
+        updateSandboxFields();
+      }
+
+      function updateRunnerFields() {
+        const runner = $("pub-runner").value;
+        const opt = RUNNER_OPTIONS.find((o) => o.value === runner);
+        $("pub-runner-desc").textContent = opt?.description ?? "";
+        $("pub-permission-hint").textContent = PERM_HINTS[runner] ?? PERM_HINTS.claude;
+        $("pub-runner-perm-note").textContent = RUNNER_PERM_NOTE[runner] ?? "";
+        updateImageField();
+      }
+
+      function updateSandboxFields() {
+        const sandbox = $("pub-sandbox").value;
+        const opt = SANDBOX_OPTIONS.find((o) => o.value === sandbox);
+        $("pub-sandbox-hint").textContent = opt?.description ?? "";
+        updateImageField();
+      }
+
+      function updateImageField() {
+        const sandbox = $("pub-sandbox").value;
+        const runner = $("pub-runner").value || "claude";
+        const show = sandbox === "docker";
+        $("pub-image-row").hidden = !show;
+        if (show) {
+          const def = DEFAULT_IMAGES[runner] ?? DEFAULT_IMAGES.claude;
+          $("pub-image").placeholder = def;
+          $("pub-image-hint").textContent = `Leave empty to use ${def}. The image must ship the ${runner === "cursor" ? "agent" : runner} binary.`;
+        }
+      }
+
+      async function loadHostCapabilities() {
+        try {
+          const data = await api("/api/runners");
+          hostCapabilities = {
+            runners: data.runners ?? [],
+            sandboxes: data.sandboxes ?? [{ id: "host", available: true }],
+            probeFailed: false,
+          };
+        } catch {
+          hostCapabilities = { runners: [], sandboxes: [], probeFailed: true };
+        }
+        rebuildRunnerSelect();
+        rebuildSandboxSelect();
+      }
+
+      $("pub-runner").addEventListener("change", updateRunnerFields);
+      $("pub-sandbox").addEventListener("change", updateSandboxFields);
+      document.querySelector("details.publish").addEventListener("toggle", () => {
+        if (document.querySelector("details.publish").open) loadHostCapabilities();
+      });
+      loadHostCapabilities();
 
       $("publish-form").addEventListener("submit", async (ev) => {
         ev.preventDefault();
@@ -1305,10 +1659,22 @@
         };
         let path;
         if (mode === "new") {
+          if ($("pub-runner").disabled || !$("pub-runner").value) {
+            msg.classList.add("error");
+            msg.textContent = hostCapabilities.probeFailed
+              ? "Cannot publish — could not probe installed runners."
+              : "Cannot publish — no agent CLI is installed on this host.";
+            return;
+          }
           path = "/api/publish";
           payload.workdir = $("pub-workdir").value.trim();
           payload.promptTemplate = $("pub-template").value;
           payload.runner = $("pub-runner").value;
+          payload.sandbox = $("pub-sandbox").value;
+          if (payload.sandbox === "docker") {
+            const image = $("pub-image").value.trim();
+            if (image) payload.image = image;
+          }
           const customSecret = $("pub-hook-secret").value.trim();
           if (customSecret) payload.secret = customSecret;
           const permissionMode = $("pub-permission").value;
@@ -1350,6 +1716,7 @@
           }
           $("publish-form").reset();
           $("pub-token").value = token;
+          await loadHostCapabilities();
           await refresh();
         } catch (err) {
           msg.classList.add("error");

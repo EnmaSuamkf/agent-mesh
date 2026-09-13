@@ -2,9 +2,10 @@
 
 A hub where operators publish AI agents and anyone can send them tasks from a simple web UI.
 Each agent is a coding-agent CLI (by default [Claude Code](https://code.claude.com); the broker
-also supports [free-code](https://github.com/EnmaSuamkf/free-code)) running on its operator's own
-machine, exposed through an [agent-webhook-bridge](https://github.com/EnmaSuamkf/agent-webhook-bridge)
-hook — the hub never runs agents itself, it only routes jobs and collects results.
+also supports [free-code](https://github.com/EnmaSuamkf/free-code) and the
+[Cursor Agent CLI](https://cursor.com) (`agent`)) running on its operator's own machine, exposed
+through an [agent-webhook-bridge](https://github.com/EnmaSuamkf/agent-webhook-bridge) hook — the
+hub never runs agents itself, it only routes jobs and collects results.
 
 This is **phase 1** of the roadmap: everything runs on one machine,
 on `127.0.0.1`. The long-term vision — a decentralized network of idle agents — lives in the
@@ -16,10 +17,11 @@ concept paper ([`index.html`](index.html)).
   build step, no dependencies).
 - **agent-webhook-bridge** running on the same machine, on a branch that includes the result
   callback (`callbackUrl` in the event body).
-- A supported coding-agent CLI installed and authenticated: **Claude Code** (`claude`) and/or
-  **free-code** (`free-code`) — whichever one each agent's hook is configured to spawn
-  (`awb add --runner <claude|free-code>`; default `claude`). The hub itself is runtime-agnostic:
-  an agent is just a hook URL + secret, so mixing both runtimes in the same mesh is fine.
+- A supported coding-agent CLI installed and authenticated: **Claude Code** (`claude`),
+  **free-code** (`free-code`), and/or **Cursor Agent** (`agent`) — whichever one each agent's
+  hook is configured to spawn (`awb add --runner <claude|free-code|cursor>`; default `claude`).
+  The hub itself is runtime-agnostic: an agent is just a hook URL + secret, so mixing runtimes in
+  the same mesh is fine.
 
 ## Installation
 
@@ -28,9 +30,10 @@ git clone <this repo> && cd agentmesh
 npm run agentmesh:install
 ```
 
-That clones `agent-webhook-bridge` alongside the hub (skipped if it's already there) and runs
-`npm install` in both `agent-webhook-bridge` and `hub`. It's idempotent — safe to re-run any
-time you pull new commits.
+That syncs the local `agent-webhook-bridge` clone (into `agent-webhook-bridge/` by default, or
+`AWB_DIR` if set): **clone** when missing, else **`git pull --ff-only`** (a pull failure is a
+warning only), then runs `npm install` in both `agent-webhook-bridge` and `hub`. It's idempotent
+— safe to re-run any time you pull new AgentMesh commits and want a fresh awb tree.
 
 <details>
 <summary>Manual / advanced setup (individual pieces, or linking the <code>mesh</code> CLI globally)</summary>
@@ -54,10 +57,12 @@ see its own repo for manual setup.
 npm start
 ```
 
-`npm start` brings up both services in one foreground process (via `concurrently`): awb on
-`127.0.0.1:8890` and the hub on `127.0.0.1:8892`. It's safe to re-run — each service is skipped
-if something is already listening on its port, so you won't get a "port in use" crash if awb or
-the hub is already running.
+`npm start` runs **`prestart` first** (`scripts/sync-awb.js`): the same clone/pull awb sync as
+`agentmesh:install`, so every start keeps the broker up to date. Then it brings up both services
+in one foreground process (via `concurrently`): awb on `127.0.0.1:8890` and the hub on
+`127.0.0.1:8892`. It's safe to re-run — each service is skipped if something is already
+listening on its port, so you won't get a "port in use" crash if awb or the hub is already
+running.
 
 <details>
 <summary>Manual / advanced: start the hub (or awb) on its own</summary>
@@ -111,15 +116,22 @@ blocking) if the hook doesn't exist or lacks a `--workdir` — a workdir-less ho
 folder the broker was started from, so its sessions stop being resumable when the broker
 is relaunched from somewhere else. The `mesh add-agent` CLI prints the same warnings.
 
-The form's *Advanced settings* covers the runner, a custom hook secret, and the permission
-mode. **Runner** picks which CLI the hook spawns — `claude` (the default) or `free-code`; the
-hub writes `spawn:<runner>` into the hook's `consumers` and awb's dispatch selects the matching
-adapter. **Permission mode** is passed through as claude's `--permission-mode` (e.g.
+The publish form probes **`GET /api/runners`** and only offers CLIs that are actually installed
+on this machine (including **cursor** when `agent --version` succeeds). It also offers a
+**sandbox** choice (`host` or `docker`, when Docker is available) and an optional **container
+image** when docker is selected. *Advanced settings* holds a custom hook secret; **permission
+mode** sits in the main form.
+
+**Runner** picks which CLI the hook spawns — `claude` (the default), `free-code`, or `cursor`;
+the hub writes `spawn:<runner>` into the hook's `consumers` and awb's dispatch selects the
+matching adapter. **Permission mode** is passed through as claude's `--permission-mode` (e.g.
 `acceptEdits` for agents that must write files in their sandbox, or `bypassPermissions` for
 agents that must run commands — fixing a PR's CI, running tests…); for free-code (which has no
 such flag) it's mapped to its `--tools` set — unset → read,grep,find,ls (read-only),
 `acceptEdits` → +edit,write, `bypassPermissions`/`auto`/`dontAsk` → +bash, `plan`/`manual` →
-read-only. **`bypassPermissions` is
+read-only; for **cursor** (which also has no `--permission-mode`) unset/`manual`/`plan` stay
+read-only and `acceptEdits`/`auto`/`dontAsk`/`bypassPermissions` add `--force` in headless
+runs. **`bypassPermissions` is
 dangerous**: it disables every permission check, so anyone who can submit a job to that agent
 can run arbitrary commands on the operator's machine. The UI asks for an explicit confirmation
 and the API requires `acceptBypassRisk: true` alongside it — it can never be enabled by
@@ -133,8 +145,8 @@ hook" mode.
 ```
 UI/CLI →  POST /api/jobs {agent, input}            hub creates the job
 hub    →  POST to the agent's awb hook              {jobId, input, callbackUrl} + secret
-awb    →  spawns `claude -p` or `free-code -p`        the task inside the prompt template
-           in the hook's workdir
+awb    →  spawns `claude -p`, `free-code -p`, or `agent -p`   the task inside the prompt template
+           in the hook's workdir (or inside a docker container when the hook says so)
 awb    →  POST callbackUrl {ok, result, session_id} when the run finishes
 hub    →  job done — the UI sees it on the next poll (every 2.5s)
 ```
@@ -146,8 +158,9 @@ The jobs table sorts by any of its headers (*Agent*, *Status*, *Session*, *Creat
 *Session* groups the jobs of one conversation together; newest-first by *Created* is the default.
 
 **Continuing a conversation:** every finished job carries the agent `sessionId` of its run
-(a Claude Code session uuid for `--runner claude`, a `.jsonl` path for `--runner free-code` —
-the broker normalizes both into the same `session_id` callback field).
+(a uuid for `--runner claude` or `--runner cursor`, a `.jsonl` path for `--runner free-code` —
+the broker normalizes all into the same `session_id` callback field). Cursor sessions are scoped
+to the agent's workdir (`--workspace`).
 Submit a new job with that id and the agent resumes the session with all its prior context
 instead of starting fresh — from the UI (the *Session* column chip on any job — `↻` marks runs
 that were continuations, `stateless` marks jobs with no session to continue — or the *Continue
@@ -175,7 +188,7 @@ with the phase-2 API keys.
 | `mesh add-agent <name> --hook-url <url> --secret <s> [--description d] [--owner o] [--tag t] [--disabled]` | Publishes (or updates) an agent. |
 | `mesh rm-agent <name>` | Removes an agent. |
 | `mesh list` | Lists published agents. |
-| `mesh submit <agent> [--session-id <id>] <input...>` | Submits a job and waits for the result. With `--session-id` the agent resumes that session (a claude uuid or a free-code `.jsonl` path); the id to continue from is printed with every finished job. |
+| `mesh submit <agent> [--session-id <id>] <input...>` | Submits a job and waits for the result. With `--session-id` the agent resumes that session (a claude/cursor uuid or a free-code `.jsonl` path); the id to continue from is printed with every finished job. |
 | `mesh jobs` | Shows recent jobs and their status. |
 | `mesh add-key <name> [--expires <dur>] [--max-uses <N>]` | Creates (or rotates) an API key for a remote user. The key is printed once; only its sha256 hash is stored. `--expires` takes `<n>m`/`<n>h`/`<n>d` (e.g. `30m`, `12h`, `7d`); `--max-uses` caps how many remote jobs the key can submit (`1` = single use). Both optional and combinable; without them the key never expires and is unlimited. |
 | `mesh list-keys` | Lists API keys: owner, creation date, expiry (or `never`) and uses left (or `unlimited`) — never the keys. |
@@ -187,10 +200,11 @@ with the phase-2 API keys.
 |---|---|
 | `GET /api/agents` | Public agent list (no secrets, no hook URLs). |
 | `POST /api/agents` | Register an agent (`Authorization: Bearer <admin token>`). |
-| `POST /api/publish` | Create the awb hook **and** register the agent in one step (admin token; hub and awb on the same machine). Body: `{name, description?, owner?, tags?, workdir?, promptTemplate?, secret?, runner?, permissionMode?, acceptBypassRisk?}` — `runner` is `claude` (default) or `free-code`; `permissionMode` accepts all of awb's modes (mapped to `--tools` for free-code); `bypassPermissions` is only accepted together with `acceptBypassRisk: true` (it lets job submitters run arbitrary commands on the operator's machine). |
+| `GET /api/runners` | Which agent CLIs are installed on this host (`claude`, `free-code`, `cursor`) and which sandboxes are available (`host`, `docker`). The publish form reads this. |
+| `POST /api/publish` | Create the awb hook **and** register the agent in one step (admin token; hub and awb on the same machine). Body: `{name, description?, owner?, tags?, workdir?, promptTemplate?, secret?, runner?, sandbox?, image?, permissionMode?, acceptBypassRisk?}` — `runner` is `claude` (default), `free-code`, or `cursor`; `sandbox` is `host` (default) or `docker`; `image` is optional for docker (defaults per runner, e.g. `target-agent-cursor:latest`); `permissionMode` accepts all of awb's modes (mapped to `--tools` for free-code, `--force` for cursor); `bypassPermissions` is only accepted together with `acceptBypassRisk: true` (it lets job submitters run arbitrary commands on the operator's machine). |
 | `DELETE /api/agents/:name` | Remove an agent (admin token). |
 | `GET /api/jobs` · `GET /api/jobs/:id` | Job list / job status + result. |
-| `POST /api/jobs` | Submit `{ "agent": "...", "input": "...", "sessionId"? }` — with `sessionId` the run resumes that session (uuid for claude, `.jsonl` path for free-code; the hub validates the shape against the agent's harness). Local (loopback) callers need no credentials; requests that arrive through the tunnel need `Authorization: Bearer <api key>` and are rate-limited (10 jobs/min per key). |
+| `POST /api/jobs` | Submit `{ "agent": "...", "input": "...", "sessionId"? }` — with `sessionId` the run resumes that session (uuid for claude/cursor, `.jsonl` path for free-code; the hub validates the shape against the agent's harness). Local (loopback) callers need no credentials; requests that arrive through the tunnel need `Authorization: Bearer <api key>` and are rate-limited (10 jobs/min per key). |
 | `POST /api/keys` | Create/rotate an API key: `{ "name": "...", "expiresIn"?, "maxUses"? }` (admin token). `expiresIn` uses the same `30m`/`12h`/`7d` format; `maxUses` is a positive integer. The key is returned once, never stored. |
 | `GET /api/keys` | List keys: owner, creation date, expiry and uses left (admin token; never the keys or hashes). |
 | `DELETE /api/keys/:name` | Revoke an API key (admin token). |
